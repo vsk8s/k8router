@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+service IngressRouter {
+    rpc PushIngressList(Ingress) returns (UpdateResponse) {}
+}
+
+message Ingress {
+    bool isSecure = 1;
+    string name = 2;
+    string namespace = 3;
+    repeated string domains = 4;
+}
+
+message UpdateResponse {
+    bool allOk = 1;
+    int32 numChanges = 2;
+}
