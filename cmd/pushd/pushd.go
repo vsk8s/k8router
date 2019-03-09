@@ -1,28 +1,34 @@
 package main
 
 import (
-	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+    "fmt"
+    "time"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
+    "k8s.io/client-go/rest"
 )
 
 func main() {
-	// creates the in-cluster config
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-	// creates the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        panic(err.Error())
+    }
 
-	// Get all pods (example)
-	pods, err := clientset.CoreV1().Pods("").List(metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
+    client, err := v1beta1.NewForConfig(config)
+    if err != nil {
+        panic(err.Error())
+    }
+
+    for {
+        items, err := client.Ingresses("dev").List(metav1.ListOptions{})
+
+        if err != nil {
+            fmt.Printf(err.Error())
+            fmt.Printf("\n")
+        } else {
+            fmt.Printf("There are %d ingresses in the cluster\n", len(items.Items))
+        }
+
+        time.Sleep(1000 * time.Millisecond)
+    }
 }
