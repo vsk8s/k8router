@@ -1,6 +1,6 @@
 /*
 	`k8router` provides a simple Ingress watcher and HAProxy config templating service.
-	It aims to enable user-facing transparent multi-cluster deployments in Kubernetes clusters
+	It aims to enable user-facing transparent multi-cluster deployments in Kubernetes clusters.
 */
 package main
 
@@ -22,8 +22,9 @@ import (
 )
 
 var (
-	backendIPs       map[string][]string
-	ingresses        map[string]map[string][]string
+	backendIPs map[string][]string
+	ingresses  map[string]map[string][]string
+
 	frontendTemplate = template.Must(template.New("haproxy-frontend").Parse(haproxyFrontendTemplate))
 	backendTemplate  = template.Must(template.New("haproxy-backend").Parse(haproxyBackendTemplate))
 
@@ -147,9 +148,9 @@ func apply(changes <-chan Change) {
 
 		// template the corresponding ingress config
 		for _, host := range changedHosts {
+			updateConfig(host)
 			log.Printf("%+v", ingresses)
 			log.Printf("%+v", backendIPs)
-			updateConfig(host)
 		}
 	}
 }
@@ -259,24 +260,29 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 				client,
 				clusterConfig.IngressServiceIPs,
 			})
+		// todo: somehow test connection?
 	}
 
 	return runtimeConfig
 }
 
-func sliceDifference(ips, toRemove []string) []string {
-	m := make(map[string]int)
+// Compute the difference of two slices as and bs. The difference as - bs is
+// intuitively defined as taking the elements of as and, for each element in bs,
+// remove one corresponding element in as if it exists. See the test cases for
+// some examples.
+func sliceDifference(as, bs []string) []string {
+	toDelete := make(map[string]int)
 	res := make([]string, 0)
 
-	for _, ip := range toRemove {
-		m[ip] += 1
+	for _, b := range bs {
+		toDelete[b] += 1
 	}
 
-	for _, ip := range ips {
-		if toRemove, found := m[ip]; !found || toRemove == 0 {
-			res = append(res, ip)
+	for _, a := range as {
+		if n, found := toDelete[a]; !found || n == 0 {
+			res = append(res, a)
 		} else {
-			m[ip] -= 1
+			toDelete[a] -= 1
 		}
 	}
 	return res
