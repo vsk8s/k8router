@@ -1,3 +1,7 @@
+/*
+	`k8router` provides a simple Ingress watcher and HAProxy config templating service.
+	It aims to enable user-facing transparent multi-cluster deployments in Kubernetes clusters
+*/
 package main
 
 import (
@@ -18,7 +22,8 @@ import (
 )
 
 var (
-	ingresses        map[string][]string
+	backendIPs       map[string][]string
+	ingresses        map[string]map[string][]string
 	frontendTemplate = template.Must(template.New("haproxy-frontend").Parse(haproxyFrontendTemplate))
 	backendTemplate  = template.Must(template.New("haproxy-backend").Parse(haproxyBackendTemplate))
 
@@ -36,7 +41,7 @@ type ClusterConfig = struct {
 }
 
 type RuntimeConfig = struct {
-	Clusters []ClusterConfig
+	Clusters []*ClusterConfig
 }
 
 type Config = struct {
@@ -49,7 +54,7 @@ type Config = struct {
 
 type Change = struct {
 	Event   *watch.Event
-	Cluster ClusterConfig
+	Cluster *ClusterConfig
 }
 
 type CommandlineFlags = struct {
@@ -70,7 +75,8 @@ func main() {
 		return
 	}
 
-	ingresses = map[string][]string{}
+	backendIPs = make(map[string][]string)
+	ingresses = make(map[string]map[string][]string)
 	rc := parseK8RouterConfig(opts.ConfigFile)
 	changes := make(chan Change)
 
@@ -99,31 +105,51 @@ func apply(changes <-chan Change) {
 		}
 
 		log.Printf("%s %s %s", change.Event.Type, change.Cluster.Name, ingress.Name)
+		changedHosts := make([]string, 0)
 
 		// Get service IPs of the ingresses (we skip this in v1 of the proxy)
 		// Then check the host spec and put the hosts in the HAProxy config
 		switch change.Event.Type {
 		case watch.Added:
 			for _, rule := range ingress.Spec.Rules {
-				ingresses[rule.Host] = append(ingresses[rule.Host], change.Cluster.IPs...)
+				backendIPs[rule.Host] = append(backendIPs[rule.Host], change.Cluster.IPs...)
+				ingresses[change.Cluster.Name][ingress.Name] = append(ingresses[change.Cluster.Name][ingress.Name], rule.Host)
+				changedHosts = append(changedHosts, rule.Host)
 			}
 		case watch.Deleted:
 			for _, rule := range ingress.Spec.Rules {
-				ingresses[rule.Host] = sliceDifference(ingresses[rule.Host], change.Cluster.IPs)
+				backendIPs[rule.Host] = sliceDifference(backendIPs[rule.Host], change.Cluster.IPs)
+				changedHosts = append(changedHosts, rule.Host)
 			}
+			delete(ingresses[change.Cluster.Name], ingress.Name)
 		case watch.Modified:
-			log.Printf("Ingress modified, this is not supported at the moment!")
-			return
+			// First, we remove any existing hosts from the backend config
+			hosts, found := ingresses[change.Cluster.Name][ingress.Name]
+			if found {
+				changedHosts = hosts
+				for _, host := range ingresses[change.Cluster.Name][ingress.Name] {
+					backendIPs[host] = sliceDifference(backendIPs[host], change.Cluster.IPs)
+				}
+				delete(ingresses[change.Cluster.Name], ingress.Name)
+			}
+			// Then we add all hosts just as in the add function
+			for _, rule := range ingress.Spec.Rules {
+				backendIPs[rule.Host] = append(backendIPs[rule.Host], change.Cluster.IPs...)
+				ingresses[change.Cluster.Name][ingress.Name] = append(ingresses[change.Cluster.Name][ingress.Name], rule.Host)
+				changedHosts = append(changedHosts, rule.Host)
+			}
 		case watch.Error:
-			log.Printf("Error watching ingresses")
+			log.Printf("Error watching ingresses in cluster %s", change.Cluster.Name)
 			return
 		default:
 			return
 		}
 
 		// template the corresponding ingress config
-		for _, rule := range ingress.Spec.Rules {
-			updateConfig(rule.Host)
+		for _, host := range changedHosts {
+			log.Printf("%+v", ingresses)
+			log.Printf("%+v", backendIPs)
+			updateConfig(host)
 		}
 	}
 }
@@ -132,13 +158,13 @@ func updateConfig(host string) {
 	log.Printf("  %s", host)
 	printedHost := strings.Replace(host, ".", "-", -1)
 
-	ings, ok := ingresses[host]
+	ips, ok := backendIPs[host]
 	if !ok {
 		panic("ingress not found")
 	}
 
 	// Remove the files if no valid Ingresses found
-	if len(ings) == 0 {
+	if len(ips) == 0 {
 		err := os.Remove(fmt.Sprintf("71-%s.conf", host))
 		if err != nil {
 			panic(err)
@@ -147,6 +173,8 @@ func updateConfig(host string) {
 		if err != nil {
 			panic(err)
 		}
+		// Now it is safe to delete this ingress from the dictionary
+		delete(backendIPs, host)
 		return
 	}
 
@@ -170,7 +198,7 @@ func updateConfig(host string) {
 	err = backendTemplate.Execute(backendConfig, struct {
 		Host string
 		IPs  []string
-	}{printedHost, ingresses[host]})
+	}{printedHost, backendIPs[host]})
 	if err != nil {
 		panic(err.Error())
 	}
@@ -178,7 +206,7 @@ func updateConfig(host string) {
 	// todo: restart haproxy
 }
 
-func watchIngresses(watcher watch.Interface, cluster ClusterConfig, c chan Change) {
+func watchIngresses(watcher watch.Interface, cluster *ClusterConfig, c chan Change) {
 	for event := range watcher.ResultChan() {
 		c <- Change{&event, cluster}
 	}
@@ -224,8 +252,9 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 			panic(err.Error())
 		}
 
+		ingresses[clusterConfig.ClusterName] = make(map[string][]string)
 		runtimeConfig.Clusters = append(runtimeConfig.Clusters,
-			ClusterConfig{
+			&ClusterConfig{
 				clusterConfig.ClusterName,
 				client,
 				clusterConfig.IngressServiceIPs,
