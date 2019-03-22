@@ -264,18 +264,19 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 	return runtimeConfig
 }
 
-func sliceDifference(ips, toRemove []string) (res []string) {
-	m := make(map[string]bool)
+func sliceDifference(ips, toRemove []string) []string {
+	m := make(map[string]int)
+	res := make([]string, 0)
 
 	for _, ip := range toRemove {
-		m[ip] = false
+		m[ip] += 1
 	}
 
 	for _, ip := range ips {
-		if alreadyDeleted, found := m[ip]; !found || alreadyDeleted {
+		if toRemove, found := m[ip]; !found || toRemove == 0 {
 			res = append(res, ip)
 		} else {
-			m[ip] = true
+			m[ip] -= 1
 		}
 	}
 	return res
