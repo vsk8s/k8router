@@ -1,5 +1,5 @@
 /*
-	`k8router` provides a simple Ingress watcher and HAProxy config templating service.
+	`k8router` is an Ingress watcher and a HAProxy config templating service.
 	It aims to enable user-facing transparent multi-cluster deployments in Kubernetes clusters.
 */
 package main
