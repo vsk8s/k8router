@@ -59,13 +59,14 @@ type Change = struct {
 }
 
 type CommandlineFlags = struct {
-	ConfigFile string `short:"c" long:"config" description:"Configuration file to use" default:"/etc/k8router/config.yml"`
-	Version    bool   `long:"version" description:"Output version info and exit"`
+	ConfigFile       string `short:"c" long:"config" description:"Configuration file to use" default:"/etc/k8router/config.yml"`
+	HAProxyConfigDir string `long:"haproxy-config-dir" description:"Configuration directory for the generated HAProxy templates." default:"/etc/haproxy/conf.d"`
+	Version          bool   `long:"version" description:"Output version info and exit"`
 }
 
 func main() {
 	log.Printf("Starting k8router %s", version)
-	log.Printf("(c) 2019 The Kubernauts")
+	log.Printf("(C) 2019 The Kubernauts")
 
 	_, err := flags.Parse(&opts)
 	if err != nil {

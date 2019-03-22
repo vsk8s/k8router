@@ -7,16 +7,16 @@ import (
 
 func TestSliceDifference(t *testing.T) {
 	testCases := []struct {
-		s []string
+		s        []string
 		toRemove []string
-		result []string
+		result   []string
 	}{
 		{
 			[]string{"this", "is", "a", "test"},
 			[]string{},
 			[]string{"this", "is", "a", "test"},
 		},
-		{	[]string{"a", "b"},
+		{[]string{"a", "b"},
 			[]string{"a"},
 			[]string{"b"},
 		},
@@ -31,7 +31,7 @@ func TestSliceDifference(t *testing.T) {
 			[]string{},
 		},
 		{
-			[]string{"a", "a", "b", "b", "b"}	,
+			[]string{"a", "a", "b", "b", "b"},
 			[]string{"a", "b", "b"},
 			[]string{"a", "b"},
 		},
