@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/imdario/mergo"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/yaml.v2"
 	v1beta1api "k8s.io/api/extensions/v1beta1"
@@ -28,7 +29,11 @@ var (
 	frontendTemplate = template.Must(template.New("haproxy-frontend").Parse(haproxyFrontendTemplate))
 	backendTemplate  = template.Must(template.New("haproxy-backend").Parse(haproxyBackendTemplate))
 
-	opts CommandlineFlags
+	opts          CommandlineFlags
+	config        Config
+	defaultConfig = Config{
+		HAProxyConfigDir: "./",
+	}
 )
 
 const (
@@ -46,7 +51,8 @@ type RuntimeConfig = struct {
 }
 
 type Config = struct {
-	ClusterConfigs []struct {
+	HAProxyConfigDir string `yaml:"haproxy_config_dir"`
+	ClusterConfigs   []struct {
 		ClusterName       string   `yaml:"name"`
 		ConfigPath        string   `yaml:"k8s_config"`
 		IngressServiceIPs []string `yaml:"ingress_ips"`
@@ -59,9 +65,8 @@ type Change = struct {
 }
 
 type CommandlineFlags = struct {
-	ConfigFile       string `short:"c" long:"config" description:"Configuration file to use" default:"/etc/k8router/config.yml"`
-	HAProxyConfigDir string `long:"haproxy-config-dir" description:"Configuration directory for the generated HAProxy templates." default:"/etc/haproxy/conf.d"`
-	Version          bool   `long:"version" description:"Output version info and exit"`
+	ConfigFile string `short:"c" long:"config" description:"Configuration file to use" default:"/etc/k8router/config.yml"`
+	Version    bool   `long:"version" description:"Output version info and exit"`
 }
 
 func main() {
@@ -77,9 +82,9 @@ func main() {
 		return
 	}
 
+	rc := parseK8RouterConfig(opts.ConfigFile)
 	backendIPs = make(map[string][]string)
 	ingresses = make(map[string]map[string][]string)
-	rc := parseK8RouterConfig(opts.ConfigFile)
 	changes := make(chan Change)
 
 	log.Print("Read config and templates, connecting to clusters")
@@ -150,8 +155,8 @@ func apply(changes <-chan Change) {
 		// template the corresponding ingress config
 		for _, host := range changedHosts {
 			updateConfig(host)
-			log.Printf("%+v", ingresses)
-			log.Printf("%+v", backendIPs)
+			//log.Printf("%+v", ingresses)
+			//log.Printf("%+v", backendIPs)
 		}
 	}
 }
@@ -167,11 +172,11 @@ func updateConfig(host string) {
 
 	// Remove the files if no valid Ingresses found
 	if len(ips) == 0 {
-		err := os.Remove(fmt.Sprintf("71-%s.conf", host))
+		err := os.Remove(fmt.Sprintf(config.HAProxyConfigDir+"71-%s.conf", host))
 		if err != nil {
 			panic(err)
 		}
-		err = os.Remove(fmt.Sprintf("75-%s.conf", host))
+		err = os.Remove(fmt.Sprintf(config.HAProxyConfigDir+"75-%s.conf", host))
 		if err != nil {
 			panic(err)
 		}
@@ -180,7 +185,7 @@ func updateConfig(host string) {
 		return
 	}
 
-	frontendConfig, err := os.Create(fmt.Sprintf("71-%s.conf", host))
+	frontendConfig, err := os.Create(fmt.Sprintf(config.HAProxyConfigDir+"71-%s.conf", host))
 	if err != nil {
 		panic(err.Error())
 	}
@@ -193,7 +198,7 @@ func updateConfig(host string) {
 		panic(err.Error())
 	}
 
-	backendConfig, err := os.Create(fmt.Sprintf("75-%s.conf", host))
+	backendConfig, err := os.Create(fmt.Sprintf(config.HAProxyConfigDir+"75-%s.conf", host))
 	if err != nil {
 		panic(err.Error())
 	}
@@ -222,10 +227,18 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 	}
 
 	decoder := yaml.NewDecoder(content)
-	config := Config{}
 	err = decoder.Decode(&config)
 	if err != nil {
 		panic(err.Error())
+	}
+
+	err = mergo.Merge(&config, defaultConfig)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	if !strings.HasSuffix(config.HAProxyConfigDir, "/") {
+		config.HAProxyConfigDir = config.HAProxyConfigDir + "/"
 	}
 
 	for _, clusterConfig := range config.ClusterConfigs {
