@@ -18,7 +18,6 @@ require (
 	golang.org/x/sys v0.0.0-20190124100055-b90733256f2e // indirect
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/yaml.v2 v2.2.2
 	k8s.io/api v0.0.0-20190111032252-67edc246be36
 	k8s.io/apimachinery v0.0.0-20190117220443-572dfc7bdfcb
