@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"text/template"
 )
@@ -222,7 +223,7 @@ func updateConfig(host string) {
 		logger.Fatal(err.Error())
 	}
 
-	// todo: restart haproxy
+	exec.Command("/bin/systemctl", "restart", "haproxy.service")
 }
 
 func watchIngresses(watcher watch.Interface, cluster *ClusterConfig, c chan Change) {
