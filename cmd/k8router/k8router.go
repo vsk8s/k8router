@@ -25,7 +25,7 @@ var (
 	backendIPs map[string][]string
 	ingresses  map[string]map[string][]string
 
-	t          = template.Must(template.New("haproxy-backend").Parse(haproxyTemplate))
+	t          *template.Template
 	configFile string
 
 	logger = logging.MustGetLogger("k8router")
@@ -33,6 +33,7 @@ var (
 	opts          CommandlineFlags
 	config        Config
 	defaultConfig = Config{
+		GoTemplatePath: "./template",
 		HAProxyConfigDir: "./",
 	}
 )
@@ -53,6 +54,7 @@ type RuntimeConfig = struct {
 
 type Config = struct {
 	HAProxyConfigDir string `yaml:"haproxy_config_dir"`
+	GoTemplatePath   string `yaml:"go_template"`
 	ClusterConfigs   []struct {
 		ClusterName       string   `yaml:"name"`
 		ConfigPath        string   `yaml:"k8s_config"`
@@ -94,6 +96,7 @@ func main() {
 	changes := make(chan Change)
 	rc := parseK8RouterConfig(opts.ConfigFile)
 
+
 	configFile = config.HAProxyConfigDir + "71-k8router.conf"
 	logger.Debugf("Config file: %s", configFile)
 	logger.Debug("Trying to remove existing config file")
@@ -102,6 +105,9 @@ func main() {
 		// ignore the error
 		logger.Debug("Could not delete potentially existing config, ignoring: " + err.Error())
 	}
+
+	logger.Debugf("Parsing template")
+	t = mustParseTemplate(config.GoTemplatePath)
 
 	logger.Info("Read config and templates, connecting to clusters")
 
@@ -266,6 +272,14 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 	return runtimeConfig
 }
 
+func mustParseTemplate(path string) *template.Template {
+	t, err := template.ParseFiles(path)
+	if err != nil {
+		logger.Fatalf(err.Error())
+	}
+	return t
+}
+
 // Compute the difference of two slices as and bs. The difference as - bs is
 // intuitively defined as taking the elements of as and, for each element in bs,
 // remove one corresponding element in as if it exists. See the test cases for
@@ -305,23 +319,3 @@ func setupLogger() {
 	}
 	logging.SetBackend(leveledBackend)
 }
-
-// TODO: Add function for nice human-readable names
-const haproxyTemplate = `
-{{- range $host, $ips := .BackendIPs }}
-    acl acl-{{ $host }} req_ssl_sni -i {{ $host }}
-    use_backend some-backend if acl-{{ $host }}
-{{- end }}
-
-{{ range $host, $ips := .BackendIPs }}
-backend {{ $host }}
-    mode http
-    balance leastconn
-    stick-table type ip size 20k peers my-peer
-    stick on src
-    option httpchk GET / more-httpchk-option {{ $host }}
-{{- range $i, $ip := $ips }}
-    server worker-{{ $host }}-{{ $i }} {{ $ip }}:80 check send-proxy
-{{- end }}
-{{ end }}
-`

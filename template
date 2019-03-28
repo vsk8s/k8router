@@ -1,0 +1,16 @@
+{{- range $host, $ips := .BackendIPs }}
+    acl acl-{{ $host }} req_ssl_sni -i {{ $host }}
+    use_backend some-backend if acl-{{ $host }}
+{{- end }}
+
+{{ range $host, $ips := .BackendIPs }}
+backend {{ $host }}
+    mode http
+    balance leastconn
+    stick-table type ip size 20k peers my-peer
+    stick on src
+    option httpchk GET / more-httpchk-option {{ $host }}
+{{- range $i, $ip := $ips }}
+    server worker-{{ $host }}-{{ $i }} {{ $ip }}:80 check send-proxy
+{{- end }}
+{{ end }}
