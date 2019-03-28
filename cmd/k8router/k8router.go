@@ -5,7 +5,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/imdario/mergo"
 	"github.com/jessevdk/go-flags"
 	"github.com/op/go-logging"
@@ -26,8 +25,8 @@ var (
 	backendIPs map[string][]string
 	ingresses  map[string]map[string][]string
 
-	frontendTemplate = template.Must(template.New("haproxy-frontend").Parse(haproxyFrontendTemplate))
-	backendTemplate  = template.Must(template.New("haproxy-backend").Parse(haproxyBackendTemplate))
+	t          = template.Must(template.New("haproxy-backend").Parse(haproxyTemplate))
+	configFile string
 
 	logger = logging.MustGetLogger("k8router")
 
@@ -95,6 +94,15 @@ func main() {
 	changes := make(chan Change)
 	rc := parseK8RouterConfig(opts.ConfigFile)
 
+	configFile = config.HAProxyConfigDir + "71-k8router.conf"
+	logger.Debugf("Config file: %s", configFile)
+	logger.Debug("Trying to remove existing config file")
+	err = os.Remove(configFile)
+	if err != nil {
+		// ignore the error
+		logger.Debug("Could not delete potentially existing config, ignoring: " + err.Error())
+	}
+
 	logger.Info("Read config and templates, connecting to clusters")
 
 	for _, cluster := range rc.Clusters {
@@ -120,7 +128,6 @@ func apply(changes <-chan Change) {
 		}
 
 		logger.Noticef("%s %s %s", change.Event.Type, change.Cluster.Name, ingress.Name)
-		changedHosts := make([]string, 0)
 
 		// Get service IPs of the ingresses (we skip this in v1 of the proxy)
 		// Then check the host spec and put the hosts in the HAProxy config
@@ -129,13 +136,14 @@ func apply(changes <-chan Change) {
 			for _, rule := range ingress.Spec.Rules {
 				backendIPs[rule.Host] = append(backendIPs[rule.Host], change.Cluster.IPs...)
 				ingresses[change.Cluster.Name][ingress.Name] = append(ingresses[change.Cluster.Name][ingress.Name], rule.Host)
-				changedHosts = append(changedHosts, rule.Host)
 				logger.Infof("Added IPs for cluster %s for host %s from ingress %s to maps", change.Cluster.Name, rule.Host, ingress.Name)
 			}
 		case watch.Deleted:
 			for _, rule := range ingress.Spec.Rules {
 				backendIPs[rule.Host] = sliceDifference(backendIPs[rule.Host], change.Cluster.IPs)
-				changedHosts = append(changedHosts, rule.Host)
+				if len(backendIPs[rule.Host]) == 0 {
+					delete(backendIPs, rule.Host)
+				}
 				logger.Infof("Deleted IPs for cluster %s and host %s from ingress %s", change.Cluster.Name, rule.Host, ingress.Name)
 			}
 			delete(ingresses[change.Cluster.Name], ingress.Name)
@@ -143,9 +151,11 @@ func apply(changes <-chan Change) {
 			// First, we remove any existing hosts from the backend config
 			hosts, found := ingresses[change.Cluster.Name][ingress.Name]
 			if found {
-				changedHosts = hosts
-				for _, host := range ingresses[change.Cluster.Name][ingress.Name] {
+				for _, host := range hosts {
 					backendIPs[host] = sliceDifference(backendIPs[host], change.Cluster.IPs)
+					if len(backendIPs[host]) == 0 {
+						delete(backendIPs, host)
+					}
 					logger.Infof("Deleted IPs for cluster %s and host %s from ingress %s", change.Cluster.Name, host, ingress.Name)
 				}
 				delete(ingresses[change.Cluster.Name], ingress.Name)
@@ -154,71 +164,34 @@ func apply(changes <-chan Change) {
 			for _, rule := range ingress.Spec.Rules {
 				backendIPs[rule.Host] = append(backendIPs[rule.Host], change.Cluster.IPs...)
 				ingresses[change.Cluster.Name][ingress.Name] = append(ingresses[change.Cluster.Name][ingress.Name], rule.Host)
-				changedHosts = append(changedHosts, rule.Host)
 				logger.Infof("Added IPs for cluster %s and host %s from ingress %s", change.Cluster.Name, rule.Host, ingress.Name)
 			}
 		case watch.Error:
 			logger.Fatalf("Error watching ingresses in cluster %s", change.Cluster.Name)
 			return
 		default:
+			logger.Fatalf("Something unexpected happened")
 			return
 		}
 
-		// template the corresponding ingress config
-		for _, host := range changedHosts {
-			updateConfig(host)
-			logger.Debugf("ingresses: %+v", ingresses)
-			logger.Debugf("backendIPs: %+v", backendIPs)
-		}
+		logger.Debugf("ingresses: %+v", ingresses)
+		logger.Debugf("backendIPs: %+v", backendIPs)
+
+		updateConfig()
 	}
 }
 
-func updateConfig(host string) {
-	logger.Debugf("Writing config for host %s", host)
-	printedHost := strings.Replace(host, ".", "-", -1)
+func updateConfig() {
+	logger.Debugf("Writing config")
 
-	ips, ok := backendIPs[host]
-	if !ok {
-		panic("ingress not found")
-	}
-
-	// Remove the files if no valid Ingresses found
-	if len(ips) == 0 {
-		err := os.Remove(fmt.Sprintf(config.HAProxyConfigDir+"71-%s.conf", host))
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		err = os.Remove(fmt.Sprintf(config.HAProxyConfigDir+"75-%s.conf", host))
-		if err != nil {
-			logger.Fatal(err.Error())
-		}
-		// Now it is safe to delete this host from the dictionary
-		delete(backendIPs, host)
-		logger.Infof("Deleted host %s from the backendIPs dictionary", host)
-		return
-	}
-
-	frontendConfig, err := os.Create(fmt.Sprintf(config.HAProxyConfigDir+"71-%s.conf", host))
+	config, err := os.Create(configFile)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 
-	err = frontendTemplate.Execute(frontendConfig, struct {
-		Host       string
-		ActualHost string
-	}{printedHost, host})
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-
-	backendConfig, err := os.Create(fmt.Sprintf(config.HAProxyConfigDir+"75-%s.conf", host))
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-	err = backendTemplate.Execute(backendConfig, struct {
-		Host string
-		IPs  []string
-	}{printedHost, backendIPs[host]})
+	err = t.Execute(config, struct {
+		BackendIPs map[string][]string
+	}{BackendIPs: backendIPs})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
@@ -333,18 +306,22 @@ func setupLogger() {
 	logging.SetBackend(leveledBackend)
 }
 
-const haproxyFrontendTemplate = `    acl {{ .Host }} req_ssl_sni -i {{ .ActualHost }}
-    use_backend some-backend if {{ .Host }}
-`
+// TODO: Add function for nice human-readable names
+const haproxyTemplate = `
+{{- range $host, $ips := .BackendIPs }}
+    acl acl-{{ $host }} req_ssl_sni -i {{ $host }}
+    use_backend some-backend if acl-{{ $host }}
+{{- end }}
 
-const haproxyBackendTemplate = `{{- $host := .Host -}}
-backend {{ .Host }}
+{{ range $host, $ips := .BackendIPs }}
+backend {{ $host }}
     mode http
     balance leastconn
     stick-table type ip size 20k peers my-peer
     stick on src
-    option httpchk GET / more-httpchk-option {{ .Host }}
-{{- range $i, $ip := .IPs }}
+    option httpchk GET / more-httpchk-option {{ $host }}
+{{- range $i, $ip := $ips }}
     server worker-{{ $host }}-{{ $i }} {{ $ip }}:80 check send-proxy
 {{- end }}
+{{ end }}
 `
