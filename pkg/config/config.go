@@ -1,4 +1,4 @@
-package router
+package config
 
 import (
 	"github.com/pkg/errors"
@@ -6,39 +6,39 @@ import (
 	"io/ioutil"
 )
 
-type certificate struct {
-	// Path to certificate bundle
+type Certificate struct {
+	// Path to Certificate bundle
 	Cert string `yaml:"cert"`
-	// Path to certificate key
+	// Path to Certificate key
 	Key string `yaml:"key"`
-	// Whether this is a wildcard certificate
+	// Whether this is a wildcard Certificate
 	IsWildcard bool `yaml:"wildcard"`
-	// List of domains this certificate is valid for
+	// List of domains this Certificate is valid for
 	Domains []string `yaml:"domains"`
 }
 
-// Describe all information we need to know about a cluster
-type cluster struct {
-	// Name of the cluster (used for logging)
+// Describe all information we need to know about a Cluster
+type Cluster struct {
+	// Name of the Cluster (used for logging)
 	Name string `yaml:"name"`
-	// Path to kubeconfig used to connect to the cluster
+	// Path to kubeconfig used to connect to the Cluster
 	Kubeconfig string `yaml:"kubeconfig"`
 	// Namespace where the Ingress is located
 	IngressNamespace string `yaml:"ingressNamespace"`
-	// Name of the ingress deployment
-	IngressDeamonSetName string `yaml:"ingressDeamonSetName"`
+	// Name of the ingress deployment (the pod label "app.kubernetes.io/name" will be checked)
+	IngressAppName string `yaml:"ingressDeamonSetName"`
 	// Port the ingress pods use
 	IngressPort int `yaml:"ingressPort"`
 }
 
 // This struct only exists for parser trickery
 type dummyCluster struct {
-	*cluster
+	*Cluster
 }
 
 // This struct only exists for parser trickery
 type dummyCertificate struct {
-	*certificate
+	*Certificate
 }
 
 // The main k8router config. This is deserialized from YAML using the annotations
@@ -57,25 +57,25 @@ type Config struct {
 
 // Custom deserializer for 'dummyCluster' in order to transparently provide default values where applicable
 func (c *dummyCluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	obj := cluster{}
+	obj := Cluster{}
 	err := unmarshal(&obj)
 
 	if err != nil {
 		return err
 	}
-	c.cluster = &obj
+	c.Cluster = &obj
 
-	if c.IngressDeamonSetName == "" {
-		c.IngressDeamonSetName = "ingress-nginx"
+	if c.IngressAppName == "" {
+		c.IngressAppName = "ingress-nginx"
 	}
 	if c.IngressNamespace == "" {
 		c.IngressNamespace = "ingress-nginx"
 	}
 	if c.Kubeconfig == "" {
-		return errors.New("cluster: kubeconfig missing")
+		return errors.New("Cluster: kubeconfig missing")
 	}
 	if c.Name == "" {
-		return errors.New("cluster: name missing")
+		return errors.New("Cluster: name missing")
 	}
 	if c.IngressPort == 0 {
 		c.IngressPort = 80
@@ -86,23 +86,23 @@ func (c *dummyCluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Custom deserializer for 'dummyCertificate' in order to transparently provide default values where applicable
 func (c *dummyCertificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	obj := certificate{}
+	obj := Certificate{}
 	err := unmarshal(&obj)
 
 	if err != nil {
 		return err
 	}
 
-	c.certificate = &obj
+	c.Certificate = &obj
 
 	if c.Cert == "" {
-		return errors.New("certificate: cert missing")
+		return errors.New("Certificate: cert missing")
 	}
 	if c.Key == "" {
-		return errors.New("certificate: cert key missing")
+		return errors.New("Certificate: cert key missing")
 	}
 	if len(c.Domains) == 0 && ! c.IsWildcard {
-		return errors.New("certificate: cert is not valid for any domain?")
+		return errors.New("Certificate: cert is not valid for any domain?")
 	}
 
 	return nil
@@ -121,10 +121,10 @@ func FromFile(path string) (*Config, error) {
 		return nil, err
 	}
 	if obj.Certificates == nil {
-		return nil, errors.New("certificate list missing")
+		return nil, errors.New("Certificate list missing")
 	}
 	if obj.Clusters == nil {
-		return nil, errors.New("cluster list missing")
+		return nil, errors.New("Cluster list missing")
 	}
 	return &obj, nil
 }

@@ -1,4 +1,4 @@
-package router
+package config
 
 import (
 	"github.com/onsi/gomega"
@@ -23,7 +23,7 @@ clusters:
 	}
 
 	_, err = FromFile(file)
-	if err == nil || err.Error() != "cluster: kubeconfig missing" {
+	if err == nil || err.Error() != "Cluster: kubeconfig missing" {
 		t.Fail()
 	}
 }
@@ -56,10 +56,10 @@ certificates:
 		return
 	}
 
-	g.Expect(len(uut.Clusters)).To(gomega.BeIdenticalTo(1), "There should be 1 cluster.")
-	g.Expect(len(uut.Certificates)).To(gomega.BeIdenticalTo(1), "There should be 1 certificate.")
+	g.Expect(len(uut.Clusters)).To(gomega.BeIdenticalTo(1), "There should be 1 Cluster.")
+	g.Expect(len(uut.Certificates)).To(gomega.BeIdenticalTo(1), "There should be 1 Certificate.")
 	g.Expect(uut.Clusters[0].IngressNamespace).To(gomega.BeIdenticalTo("ingress-nginx"))
-	g.Expect(uut.Clusters[0].IngressDeamonSetName).To(gomega.BeIdenticalTo("ingress-nginx"))
+	g.Expect(uut.Clusters[0].IngressAppName).To(gomega.BeIdenticalTo("ingress-nginx"))
 	g.Expect(uut.Clusters[0].IngressPort).To(gomega.BeIdenticalTo(80))
 	g.Expect(uut.Certificates[0].IsWildcard).To(gomega.BeIdenticalTo(false))
 }

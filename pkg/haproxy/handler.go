@@ -2,6 +2,8 @@ package haproxy
 
 import (
 	log "github.com/sirupsen/logrus"
+	"github.com/soseth/k8router/pkg/config"
+	"github.com/soseth/k8router/pkg/state"
 	"os"
 	"os/exec"
 	"text/template"
@@ -9,17 +11,21 @@ import (
 
 type Handler struct {
 	template *template.Template
-	targetConfig string
+	config   config.Config
+	updates  chan state.ClusterState
 }
 
-func Init() *Handler {
-	return &Handler{}
+func Init(updates chan state.ClusterState, config config.Config) *Handler {
+	return &Handler{
+		updates: updates,
+	}
 }
 
 func (h *Handler) UpdateConfig(backendIPs map[string][]string, ingresses map[string]map[string][]string) {
 	log.Debug("Writing config")
 
-	config, err := os.OpenFile(h.targetConfig, os.O_TRUNC|os.O_CREATE, 0644)
+	// TODO: Respect file mode setting
+	config, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		log.WithError(err).Fatal("Couldn't open haproxy config for writing")
 	}
