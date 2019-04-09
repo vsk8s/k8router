@@ -7,6 +7,8 @@ import (
 )
 
 type Certificate struct {
+	// How the certificate is named internally
+	Name string `yaml:"name"`
 	// Path to Certificate bundle
 	Cert string `yaml:"cert"`
 	// Path to Certificate key

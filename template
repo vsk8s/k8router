@@ -1,16 +1,46 @@
-{{- range $host, $ips := .BackendIPs }}
-    acl acl-{{ $host }} req_ssl_sni -i {{ $host }}
-    use_backend some-backend if acl-{{ $host }}
+frontend HTTP
+    bind     %PUBLIC_IPV4%:80
+    bind     %PUBLIC_IPV6%:80
+
+    # TODO
+
+frontend HTTPS
+    bind     %PUBLIC_IPV4%:443
+    bind     %PUBLIC_IPV6%:443
+    mode     tcp
+    option   tcplog
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req_ssl_hello_type 1 }
+
+{{- range $cert, $host := .SniMap }}
+    acl      acl-{{ $cert }} req_ssl_sni -i {{ $host }}
+    use_backend wrap-backend-{{ $cert }} if acl-{{ $cert }}
+{{- end }}
+{{- if .WildcardCertName != "" }}
+    default_backend wrap-backend-{{ .WildcardCertName }}
 {{- end }}
 
-{{ range $host, $ips := .BackendIPs }}
-backend {{ $host }}
-    mode http
-    balance leastconn
-    stick-table type ip size 20k peers my-peer
-    stick on src
-    option httpchk GET / more-httpchk-option {{ $host }}
-{{- range $i, $ip := $ips }}
-    server worker-{{ $host }}-{{ $i }} {{ $ip }}:80 check send-proxy
+{{- range $cert, _ := .SniMap }}
+backend wrap-backend-{{ $cert }}
+    mode     tcp
+    server   loopback  127.0.0.1:12345 send-proxy-v2
+
+frontend wrap-frontend-{{ $cert }}
+    mode     http
+    bind     127.0.0.1:12345 ssl crt {{ .Certs[$cert] }} accept-proxy
+
+{{- range _, $domain := .SniMap[$cert] }}
+    acl      acl-wrap-{{ $domain }} hdr(host) -i {{ $domain }}
+    use_backend backend-{{ strings.Join(.IngressInCluster[$domain], "-") }} if acl-wrap-{{ $domain }}
 {{- end }}
-{{ end }}
+{{- end }}
+
+{{- range $backend, _ := .BackendClusterCombinations }}
+backend backend-{{ $backend }}
+    mode     http
+    balance  source
+    hash-type consistent
+
+{{- range _, $server := .BackendClusterCombinations[$backend] }}
+    server   server-{{ $server }} {{ $server }}:80 check
+{{- end }}

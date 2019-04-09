@@ -16,6 +16,7 @@ type K8RouterBackend struct {
 
 // The full state of a given Cluster. This should be enough to build the haproxy config
 type ClusterState struct {
+	Name string
 	Ingresses []K8RouterIngress
 	Backends  []K8RouterBackend
 }
