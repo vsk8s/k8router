@@ -32,10 +32,10 @@ func (h *Handler) UpdateConfig(backendIPs map[string][]string, ingresses map[str
 
 	err = h.template.Execute(config, struct {
 		BackendIPs map[string][]string
-		Ingresses map[string]map[string][]string
+		Ingresses  map[string]map[string][]string
 	}{
 		BackendIPs: backendIPs,
-		Ingresses: ingresses,
+		Ingresses:  ingresses,
 	})
 	if err != nil {
 		log.WithError(err).Fatal("Couldn't template haproxy config")

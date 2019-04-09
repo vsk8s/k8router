@@ -33,7 +33,7 @@ var (
 	opts          CommandlineFlags
 	config        Config
 	defaultConfig = Config{
-		GoTemplatePath: "./template",
+		GoTemplatePath:   "./template",
 		HAProxyConfigDir: "./",
 	}
 )
@@ -95,7 +95,6 @@ func main() {
 	ingresses = make(map[string]map[string][]string)
 	changes := make(chan Change)
 	rc := parseK8RouterConfig(opts.ConfigFile)
-
 
 	configFile = config.HAProxyConfigDir + "71-k8router.conf"
 	logger.Debugf("Config file: %s", configFile)

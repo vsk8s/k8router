@@ -8,7 +8,7 @@ import (
 
 type Router struct {
 	haproxyHandler *haproxy.Handler
-	cfg *config.Config
+	cfg            *config.Config
 }
 
 func Init(cfgPath string) (*Router, error) {

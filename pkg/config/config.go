@@ -101,7 +101,7 @@ func (c *dummyCertificate) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	if c.Key == "" {
 		return errors.New("Certificate: cert key missing")
 	}
-	if len(c.Domains) == 0 && ! c.IsWildcard {
+	if len(c.Domains) == 0 && !c.IsWildcard {
 		return errors.New("Certificate: cert is not valid for any domain?")
 	}
 
