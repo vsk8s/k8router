@@ -6,24 +6,24 @@ import (
 	"io/ioutil"
 )
 
-type Certificate struct {
+type CertificateInternal struct {
 	// How the certificate is named internally
 	Name string `yaml:"name"`
-	// Path to Certificate bundle
+	// Path to CertificateInternal bundle
 	Cert string `yaml:"cert"`
-	// Path to Certificate key
+	// Path to CertificateInternal key
 	Key string `yaml:"key"`
-	// Whether this is a wildcard Certificate
+	// Whether this is a wildcard CertificateInternal
 	IsWildcard bool `yaml:"wildcard"`
-	// List of domains this Certificate is valid for
+	// List of domains this CertificateInternal is valid for
 	Domains []string `yaml:"domains"`
 }
 
-// Describe all information we need to know about a Cluster
-type Cluster struct {
-	// Name of the Cluster (used for logging)
+// Describe all information we need to know about a ClusterInternal
+type ClusterInternal struct {
+	// Name of the ClusterInternal (used for logging)
 	Name string `yaml:"name"`
-	// Path to kubeconfig used to connect to the Cluster
+	// Path to kubeconfig used to connect to the ClusterInternal
 	Kubeconfig string `yaml:"kubeconfig"`
 	// Namespace where the Ingress is located
 	IngressNamespace string `yaml:"ingressNamespace"`
@@ -34,13 +34,13 @@ type Cluster struct {
 }
 
 // This struct only exists for parser trickery
-type dummyCluster struct {
-	*Cluster
+type Cluster struct {
+	*ClusterInternal
 }
 
 // This struct only exists for parser trickery
-type dummyCertificate struct {
-	*Certificate
+type Certificate struct {
+	*CertificateInternal
 }
 
 // The main k8router config. This is deserialized from YAML using the annotations
@@ -52,20 +52,20 @@ type Config struct {
 	// Mode to use in case the config file is created
 	HAProxyDropinMode string `yaml:"haproxyDropinMode"`
 	// List of clusters to route to
-	Clusters []dummyCluster `yaml:"clusters"`
+	Clusters []Cluster `yaml:"clusters"`
 	// List of TLS certificates to use
-	Certificates []dummyCertificate `yaml:"certificates"`
+	Certificates []Certificate `yaml:"certificates"`
 }
 
-// Custom deserializer for 'dummyCluster' in order to transparently provide default values where applicable
-func (c *dummyCluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	obj := Cluster{}
+// Custom deserializer for 'Cluster' in order to transparently provide default values where applicable
+func (c *Cluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	obj := ClusterInternal{}
 	err := unmarshal(&obj)
 
 	if err != nil {
 		return err
 	}
-	c.Cluster = &obj
+	c.ClusterInternal = &obj
 
 	if c.IngressAppName == "" {
 		c.IngressAppName = "ingress-nginx"
@@ -74,10 +74,10 @@ func (c *dummyCluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		c.IngressNamespace = "ingress-nginx"
 	}
 	if c.Kubeconfig == "" {
-		return errors.New("Cluster: kubeconfig missing")
+		return errors.New("ClusterInternal: kubeconfig missing")
 	}
 	if c.Name == "" {
-		return errors.New("Cluster: name missing")
+		return errors.New("ClusterInternal: name missing")
 	}
 	if c.IngressPort == 0 {
 		c.IngressPort = 80
@@ -86,25 +86,25 @@ func (c *dummyCluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// Custom deserializer for 'dummyCertificate' in order to transparently provide default values where applicable
-func (c *dummyCertificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	obj := Certificate{}
+// Custom deserializer for 'Certificate' in order to transparently provide default values where applicable
+func (c *Certificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	obj := CertificateInternal{}
 	err := unmarshal(&obj)
 
 	if err != nil {
 		return err
 	}
 
-	c.Certificate = &obj
+	c.CertificateInternal = &obj
 
 	if c.Cert == "" {
-		return errors.New("Certificate: cert missing")
+		return errors.New("CertificateInternal: cert missing")
 	}
 	if c.Key == "" {
-		return errors.New("Certificate: cert key missing")
+		return errors.New("CertificateInternal: cert key missing")
 	}
 	if len(c.Domains) == 0 && !c.IsWildcard {
-		return errors.New("Certificate: cert is not valid for any domain?")
+		return errors.New("CertificateInternal: cert is not valid for any domain?")
 	}
 
 	return nil
@@ -123,10 +123,10 @@ func FromFile(path string) (*Config, error) {
 		return nil, err
 	}
 	if obj.Certificates == nil {
-		return nil, errors.New("Certificate list missing")
+		return nil, errors.New("CertificateInternal list missing")
 	}
 	if obj.Clusters == nil {
-		return nil, errors.New("Cluster list missing")
+		return nil, errors.New("ClusterInternal list missing")
 	}
 	return &obj, nil
 }

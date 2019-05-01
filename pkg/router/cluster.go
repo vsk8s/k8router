@@ -20,7 +20,7 @@ import (
 
 // Handle all single-cluster related tasks
 type Cluster struct {
-	config              config.Cluster
+	config              config.ClusterInternal
 	extensionClient     v1beta1extension.ExtensionsV1beta1Interface
 	coreClient          v1core.CoreV1Interface
 	ingressEvents       chan state.IngressChange
@@ -33,7 +33,7 @@ type Cluster struct {
 }
 
 // Create a new cluster handler for the provided config entry
-func ClusterFromConfig(config config.Cluster) *Cluster {
+func ClusterFromConfig(config config.ClusterInternal) *Cluster {
 	obj := Cluster{
 		config:              config,
 		ingressEvents:       make(chan state.IngressChange, 2),

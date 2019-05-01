@@ -4,7 +4,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/soseth/k8router/pkg/config"
 	"github.com/soseth/k8router/pkg/state"
-	"net"
 	"os"
 	"os/exec"
 	"sort"
@@ -27,10 +26,12 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 	if err != nil {
 		return nil, err
 	}
+	parsedTemplate.Funcs(template.FuncMap{"StringJoin": strings.Join})
 	return &Handler{
 		updates:    updates,
 		numChanges: 0,
 		template:   parsedTemplate,
+		clusterState: make(map[string]state.ClusterState),
 	}, nil
 }
 
@@ -63,59 +64,77 @@ func (h* Handler) rebuildConfig() {
 	 *  * routes to a combination of backends
 	 */
 
-	cfg := TemplateInfo{
-		WildcardCertName: "",
-	}
-
-	// Step 1: Which SNIs do we have in our certs (first frontend and it's backends)
-	for _, cert := range h.config.Certificates {
-		cfg.SniMap[cert.Name] = cert.Domains
-		if cert.IsWildcard {
-			cfg.WildcardCertName = cert.Name
-		}
-	}
-
-	// For each Ingress, which backends does it have?
+	// Step 1: For each Ingress, which backends does it have?
+	hostToClusters := make(map[string][]string)
 	for _, cluster := range h.clusterState {
 		for _, ingress := range cluster.Ingresses {
 			for _, host := range ingress.Hosts {
-				cfg.IngressInCluster[host] = append(cfg.IngressInCluster[host], cluster.Name)
+				hostToClusters[host] = append(hostToClusters[host], cluster.Name)
 			}
 		}
 	}
-	backendToHost := map[string][]string{}
+
+	// Step 2: Make a map of backend combinations to ips and of hosts to backend combinations
+	hostToBackend := map[string]string{}
+	backendCombinationList := map[string][]Backend{}
 	hosts := map[string]bool{}
-	for host, clusters := range cfg.IngressInCluster {
+	for host, clusters := range hostToClusters {
 		hosts[host] = true
 		sort.Strings(clusters)
 		key := strings.Join(clusters, "-")
-		if _, ok := cfg.BackendClusterCombinations[key] ; !ok {
+		if _, ok := backendCombinationList[key] ; !ok {
 			// We haven't seen this particular backend combination yet
-			var backendIPs []*net.IP
+			var backends []Backend
 			for _, cluster := range clusters {
 				for _, backend := range h.clusterState[cluster].Backends {
-					backendIPs = append(backendIPs, backend.IP)
+					backends = append(backends, Backend{
+						IP: backend.IP,
+						Name: backend.Name,
+					})
 				}
 			}
-			cfg.BackendClusterCombinations[key] = backendIPs
+			backendCombinationList[key] = backends
 		}
-		backendToHost[key] = append(backendToHost[key], host)
+		hostToBackend[host] = key
 	}
 
-	// Map of domains to certificates
-	frontends := map[string]string{}
+	cfg := TemplateInfo{
+		SniList:                make(map[string]SniDetail),
+		BackendCombinationList: backendCombinationList,
+		HostToBackend:          hostToBackend,
+	}
+
+	// Step 3: Which SNIs do we have in our certs (first frontend and it's backends)
+	localForwardPort := 12345; // TODO(uubk): Make configurable
 	for _, cert := range h.config.Certificates {
-		for _, name := range cert.Domains {
-			if hosts[name] {
-				frontends[name] = cert.Name
+		// For each host: Figure out whether we actually have a backend there
+		var actuallyUsedHosts []string
+		for _, host := range cert.Domains {
+			if strings.Contains(host, "*") {
+				suffix := strings.Trim(host, "*")
+				for actualHost := range hostToBackend {
+					if strings.HasSuffix(actualHost, suffix) {
+						actuallyUsedHosts = append(actuallyUsedHosts, actualHost)
+					}
+				}
+			} else {
+				if _, ok := hostToBackend[host]; ok {
+					actuallyUsedHosts = append(actuallyUsedHosts, host)
+				}
 			}
 		}
-		if cert.IsWildcard {
-			frontends[""] = cert.Name
+		currentCert := SniDetail{
+			Domains: actuallyUsedHosts,
+			IsWildcard: cert.IsWildcard,
+			Path: cert.Cert, //TODO(uubk): Fix
+			LocalForwardPort: localForwardPort,
 		}
-		cfg.Certs[cert.Name] = cert.Cert
+		cfg.SniList[cert.Name] = currentCert
+		localForwardPort+=1
+		if cert.IsWildcard {
+			cfg.DefaultWildcardCert = cert.Name
+		}
 	}
-
 	h.templateInfo = cfg
 }
 

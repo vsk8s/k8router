@@ -23,7 +23,7 @@ clusters:
 	}
 
 	_, err = FromFile(file)
-	if err == nil || err.Error() != "Cluster: kubeconfig missing" {
+	if err == nil || err.Error() != "ClusterInternal: kubeconfig missing" {
 		t.Fail()
 	}
 }
@@ -56,8 +56,8 @@ certificates:
 		return
 	}
 
-	g.Expect(len(uut.Clusters)).To(gomega.BeIdenticalTo(1), "There should be 1 Cluster.")
-	g.Expect(len(uut.Certificates)).To(gomega.BeIdenticalTo(1), "There should be 1 Certificate.")
+	g.Expect(len(uut.Clusters)).To(gomega.BeIdenticalTo(1), "There should be 1 ClusterInternal.")
+	g.Expect(len(uut.Certificates)).To(gomega.BeIdenticalTo(1), "There should be 1 CertificateInternal.")
 	g.Expect(uut.Clusters[0].IngressNamespace).To(gomega.BeIdenticalTo("ingress-nginx"))
 	g.Expect(uut.Clusters[0].IngressAppName).To(gomega.BeIdenticalTo("ingress-nginx"))
 	g.Expect(uut.Clusters[0].IngressPort).To(gomega.BeIdenticalTo(80))

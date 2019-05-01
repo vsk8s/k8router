@@ -20,7 +20,7 @@ func createFakeClientsetAndUUT(t *testing.T, objects ...runtime.Object) (*fake.C
 		},
 	})
 	client := fake.NewSimpleClientset(objects...)
-	uut := ClusterFromConfig(config.Cluster{
+	uut := ClusterFromConfig(config.ClusterInternal{
 		Name: "fake",
 	})
 	uut.extensionClient = client.ExtensionsV1beta1()

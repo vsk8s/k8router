@@ -3,6 +3,12 @@ frontend HTTP
     bind     %PUBLIC_IPV6%:80
 
     # TODO
+{{ range $cert, $details := .SniList }}
+{{- range $dummyidx, $domain := $details.Domains }}
+    acl      acl-http-{{ $domain }} hdr(host) -i {{ $domain }}
+    use_backend backend-{{ index $.HostToBackend $domain }} if acl-http-{{ $domain }}
+{{- end }}
+{{- end }}
 
 frontend HTTPS
     bind     %PUBLIC_IPV4%:443
@@ -12,35 +18,37 @@ frontend HTTPS
     tcp-request inspect-delay 5s
     tcp-request content accept if { req_ssl_hello_type 1 }
 
-{{- range $cert, $host := .SniMap }}
-    acl      acl-{{ $cert }} req_ssl_sni -i {{ $host }}
-    use_backend wrap-backend-{{ $cert }} if acl-{{ $cert }}
+{{- range $cert, $details := .SniList }}
+{{- range $dummyidx, $host := $details.Domains }}
+    acl      acl-{{ $cert }}-{{ $host }} req_ssl_sni -i {{ $host }}
+    use_backend wrap-backend-{{ $cert }} if acl-{{ $cert }}-{{ $host }}
 {{- end }}
-{{- if .WildcardCertName != "" }}
-    default_backend wrap-backend-{{ .WildcardCertName }}
+{{- end }}
+{{ if ne .DefaultWildcardCert "" }}
+    default_backend wrap-backend-{{ .DefaultWildcardCert }}
 {{- end }}
 
-{{- range $cert, _ := .SniMap }}
+{{ range $cert, $details := .SniList }}
 backend wrap-backend-{{ $cert }}
     mode     tcp
-    server   loopback  127.0.0.1:12345 send-proxy-v2
+    server   loopback  127.0.0.1:{{ $details.LocalForwardPort }} send-proxy-v2
 
 frontend wrap-frontend-{{ $cert }}
     mode     http
-    bind     127.0.0.1:12345 ssl crt {{ .Certs[$cert] }} accept-proxy
+    bind     127.0.0.1:{{ $details.LocalForwardPort }}  ssl crt {{ $details.Path }} accept-proxy
 
-{{- range _, $domain := .SniMap[$cert] }}
-    acl      acl-wrap-{{ $domain }} hdr(host) -i {{ $domain }}
-    use_backend backend-{{ strings.Join(.IngressInCluster[$domain], "-") }} if acl-wrap-{{ $domain }}
+{{- range $dummyidx, $domain := $details.Domains }}
+    acl      acl-https-{{ $domain }} hdr(host) -i {{ $domain }}
+    use_backend backend-{{ index $.HostToBackend $domain }} if acl-https-{{ $domain }}
+{{ end }}
 {{- end }}
-{{- end }}
-
-{{- range $backend, _ := .BackendClusterCombinations }}
+{{ range $backend, $details := .BackendCombinationList }}
 backend backend-{{ $backend }}
     mode     http
     balance  source
     hash-type consistent
 
-{{- range _, $server := .BackendClusterCombinations[$backend] }}
-    server   server-{{ $server }} {{ $server }}:80 check
+{{- range $dummyidx, $server := index $.BackendCombinationList $backend }}
+    server   server-{{ $server.Name }} {{ $server.IP }}:80 check
+{{- end }}
 {{- end }}

@@ -234,7 +234,7 @@ func parseK8RouterConfig(path string) RuntimeConfig {
 
 	for _, clusterConfig := range config.ClusterConfigs {
 		if clusterConfig.ClusterName == "" {
-			logger.Fatal("Cluster name may not be empty")
+			logger.Fatal("ClusterInternal name may not be empty")
 		}
 
 		for _, ip := range clusterConfig.IngressServiceIPs {
