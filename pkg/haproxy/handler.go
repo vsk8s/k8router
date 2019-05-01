@@ -13,11 +13,11 @@ import (
 )
 
 type Handler struct {
-	template *template.Template
-	config   config.Config
-	updates  chan state.ClusterState
+	template     *template.Template
+	config       config.Config
+	updates      chan state.ClusterState
 	clusterState map[string]state.ClusterState
-	numChanges int
+	numChanges   int
 	templateInfo TemplateInfo
 }
 
@@ -28,9 +28,9 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 	}
 	parsedTemplate.Funcs(template.FuncMap{"StringJoin": strings.Join})
 	return &Handler{
-		updates:    updates,
-		numChanges: 0,
-		template:   parsedTemplate,
+		updates:      updates,
+		numChanges:   0,
+		template:     parsedTemplate,
 		clusterState: make(map[string]state.ClusterState),
 	}, nil
 }
@@ -56,7 +56,7 @@ func (h *Handler) updateConfig() {
 	}
 }
 
-func (h* Handler) rebuildConfig() {
+func (h *Handler) rebuildConfig() {
 	/* The HAProxy config we write works (simplified) like this:
 	 *  * There is a frontend that splits request according to SNI
 	 *  * For each certificate, we have a backend where those SNI request go to and another frontend with that cert
@@ -82,13 +82,13 @@ func (h* Handler) rebuildConfig() {
 		hosts[host] = true
 		sort.Strings(clusters)
 		key := strings.Join(clusters, "-")
-		if _, ok := backendCombinationList[key] ; !ok {
+		if _, ok := backendCombinationList[key]; !ok {
 			// We haven't seen this particular backend combination yet
 			var backends []Backend
 			for _, cluster := range clusters {
 				for _, backend := range h.clusterState[cluster].Backends {
 					backends = append(backends, Backend{
-						IP: backend.IP,
+						IP:   backend.IP,
 						Name: backend.Name,
 					})
 				}
@@ -102,7 +102,7 @@ func (h* Handler) rebuildConfig() {
 		SniList:                make(map[string]SniDetail),
 		BackendCombinationList: backendCombinationList,
 		HostToBackend:          hostToBackend,
-		IPs: h.config.IPs,
+		IPs:                    h.config.IPs,
 	}
 
 	// Step 3: Which SNIs do we have in our certs (first frontend and it's backends)
@@ -127,13 +127,13 @@ func (h* Handler) rebuildConfig() {
 			}
 		}
 		currentCert := SniDetail{
-			Domains: actuallyUsedHosts,
-			IsWildcard: isWildcard,
-			Path: cert.Cert,
+			Domains:          actuallyUsedHosts,
+			IsWildcard:       isWildcard,
+			Path:             cert.Cert,
 			LocalForwardPort: localForwardPort,
 		}
 		cfg.SniList[cert.Name] = currentCert
-		localForwardPort+=1
+		localForwardPort += 1
 		if isWildcard {
 			cfg.DefaultWildcardCert = cert.Name
 		}
@@ -141,14 +141,14 @@ func (h* Handler) rebuildConfig() {
 	h.templateInfo = cfg
 }
 
-func (h* Handler) eventLoop() {
+func (h *Handler) eventLoop() {
 	updateTicks := time.NewTicker(1 * time.Second)
 	for {
 		select {
-		case event := <- h.updates:
+		case event := <-h.updates:
 			h.clusterState[event.Name] = event
 			h.numChanges++
-		case _ = <- updateTicks.C:
+		case _ = <-updateTicks.C:
 			if h.numChanges > 0 {
 				// There is something to do
 				h.numChanges = 0
@@ -159,6 +159,6 @@ func (h* Handler) eventLoop() {
 	}
 }
 
-func (h* Handler) Start() {
+func (h *Handler) Start() {
 	go h.eventLoop()
 }

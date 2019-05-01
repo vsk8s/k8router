@@ -2,7 +2,7 @@ package haproxy
 
 import "net"
 
-type SniDetail struct{
+type SniDetail struct {
 	// List of domains this certificate is valid for. Filtered to domains actually required
 	Domains []string
 	// Whether this is a wildcard certificate
@@ -13,8 +13,8 @@ type SniDetail struct{
 	Path string
 }
 
-type Backend struct{
-	IP *net.IP
+type Backend struct {
+	IP   *net.IP
 	Name string
 }
 

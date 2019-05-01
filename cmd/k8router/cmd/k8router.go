@@ -11,7 +11,7 @@ import (
 
 type K8router struct {
 	configPath string
-	verbose bool
+	verbose    bool
 }
 
 func (k8r *K8router) setupArgs() {

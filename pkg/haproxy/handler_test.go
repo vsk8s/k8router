@@ -48,7 +48,7 @@ func TestConfigGeneration(t *testing.T) {
 		Backends: []state.K8RouterBackend{
 			{
 				Name: "foobar",
-				IP: &ip,
+				IP:   &ip,
 			},
 		},
 		Ingresses: []state.K8RouterIngress{
