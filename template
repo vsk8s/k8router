@@ -1,8 +1,7 @@
 frontend HTTP
-    bind     %PUBLIC_IPV4%:80
-    bind     %PUBLIC_IPV6%:80
-
-    # TODO
+{{- range $dummyidx, $ip := .IPs }}
+    bind     {{ $ip }}:80
+{{- end }}
 {{ range $cert, $details := .SniList }}
 {{- range $dummyidx, $domain := $details.Domains }}
     acl      acl-http-{{ $domain }} hdr(host) -i {{ $domain }}
@@ -11,8 +10,10 @@ frontend HTTP
 {{- end }}
 
 frontend HTTPS
-    bind     %PUBLIC_IPV4%:443
-    bind     %PUBLIC_IPV6%:443
+{{- range $dummyidx, $ip := .IPs }}
+    bind     {{ $ip }}:443
+{{- end }}
+
     mode     tcp
     option   tcplog
     tcp-request inspect-delay 5s

@@ -20,7 +20,7 @@ import (
 
 // Handle all single-cluster related tasks
 type Cluster struct {
-	config              config.ClusterInternal
+	config              config.Cluster
 	extensionClient     v1beta1extension.ExtensionsV1beta1Interface
 	coreClient          v1core.CoreV1Interface
 	ingressEvents       chan state.IngressChange
@@ -33,13 +33,13 @@ type Cluster struct {
 }
 
 // Create a new cluster handler for the provided config entry
-func ClusterFromConfig(config config.ClusterInternal) *Cluster {
+func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
 	obj := Cluster{
 		config:              config,
 		ingressEvents:       make(chan state.IngressChange, 2),
 		backendEvents:       make(chan state.BackendChange, 2),
 		stopChannel:         make(chan bool, 2),
-		clusterStateChannel: make(chan state.ClusterState, 10),
+		clusterStateChannel: clusterStateChannel,
 		readinessChannel:    make(chan bool, 2),
 		stopFlag:            false,
 	}
@@ -382,9 +382,4 @@ func (c *Cluster) Stop() {
 	c.stopFlag = true
 	c.stopChannel <- true
 	c.stopChannel <- true
-}
-
-// Get a channel where the cluster state is streamed periodically
-func (c *Cluster) Events() chan state.ClusterState {
-	return c.clusterStateChannel
 }

@@ -4,26 +4,24 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"net"
 )
 
+// Everything you ever wanted to know about a certificate
 type CertificateInternal struct {
 	// How the certificate is named internally
 	Name string `yaml:"name"`
-	// Path to CertificateInternal bundle
+	// Path to certificate directory
 	Cert string `yaml:"cert"`
-	// Path to CertificateInternal key
-	Key string `yaml:"key"`
-	// Whether this is a wildcard CertificateInternal
-	IsWildcard bool `yaml:"wildcard"`
-	// List of domains this CertificateInternal is valid for
+	// List of domains this certificate is valid for
 	Domains []string `yaml:"domains"`
 }
 
-// Describe all information we need to know about a ClusterInternal
+// Describe all information we need to know about a cluster
 type ClusterInternal struct {
-	// Name of the ClusterInternal (used for logging)
+	// Name of the cluster (used for logging)
 	Name string `yaml:"name"`
-	// Path to kubeconfig used to connect to the ClusterInternal
+	// Path to kubeconfig used to connect to the cluster
 	Kubeconfig string `yaml:"kubeconfig"`
 	// Namespace where the Ingress is located
 	IngressNamespace string `yaml:"ingressNamespace"`
@@ -55,6 +53,8 @@ type Config struct {
 	Clusters []Cluster `yaml:"clusters"`
 	// List of TLS certificates to use
 	Certificates []Certificate `yaml:"certificates"`
+	// List of IPs to listen on
+	IPs []*net.IP `yaml:"ips"`
 }
 
 // Custom deserializer for 'Cluster' in order to transparently provide default values where applicable
@@ -74,10 +74,10 @@ func (c *Cluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		c.IngressNamespace = "ingress-nginx"
 	}
 	if c.Kubeconfig == "" {
-		return errors.New("ClusterInternal: kubeconfig missing")
+		return errors.New("Cluster: kubeconfig missing")
 	}
 	if c.Name == "" {
-		return errors.New("ClusterInternal: name missing")
+		return errors.New("Cluster: name missing")
 	}
 	if c.IngressPort == 0 {
 		c.IngressPort = 80
@@ -98,13 +98,10 @@ func (c *Certificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	c.CertificateInternal = &obj
 
 	if c.Cert == "" {
-		return errors.New("CertificateInternal: cert missing")
+		return errors.New("Certificate: cert missing")
 	}
-	if c.Key == "" {
-		return errors.New("CertificateInternal: cert key missing")
-	}
-	if len(c.Domains) == 0 && !c.IsWildcard {
-		return errors.New("CertificateInternal: cert is not valid for any domain?")
+	if len(c.Domains) == 0 {
+		return errors.New("Certificate: cert is not valid for any domain?")
 	}
 
 	return nil
@@ -123,10 +120,13 @@ func FromFile(path string) (*Config, error) {
 		return nil, err
 	}
 	if obj.Certificates == nil {
-		return nil, errors.New("CertificateInternal list missing")
+		return nil, errors.New("Certificate list missing")
 	}
 	if obj.Clusters == nil {
-		return nil, errors.New("ClusterInternal list missing")
+		return nil, errors.New("Cluster list missing")
+	}
+	if len(obj.IPs) == 0 {
+		return nil, errors.New("IP list missing")
 	}
 	return &obj, nil
 }

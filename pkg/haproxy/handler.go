@@ -102,15 +102,18 @@ func (h* Handler) rebuildConfig() {
 		SniList:                make(map[string]SniDetail),
 		BackendCombinationList: backendCombinationList,
 		HostToBackend:          hostToBackend,
+		IPs: h.config.IPs,
 	}
 
 	// Step 3: Which SNIs do we have in our certs (first frontend and it's backends)
-	localForwardPort := 12345; // TODO(uubk): Make configurable
+	localForwardPort := 12345 // TODO(uubk): Make configurable
 	for _, cert := range h.config.Certificates {
 		// For each host: Figure out whether we actually have a backend there
 		var actuallyUsedHosts []string
+		isWildcard := false
 		for _, host := range cert.Domains {
 			if strings.Contains(host, "*") {
+				isWildcard = true
 				suffix := strings.Trim(host, "*")
 				for actualHost := range hostToBackend {
 					if strings.HasSuffix(actualHost, suffix) {
@@ -125,13 +128,13 @@ func (h* Handler) rebuildConfig() {
 		}
 		currentCert := SniDetail{
 			Domains: actuallyUsedHosts,
-			IsWildcard: cert.IsWildcard,
-			Path: cert.Cert, //TODO(uubk): Fix
+			IsWildcard: isWildcard,
+			Path: cert.Cert,
 			LocalForwardPort: localForwardPort,
 		}
 		cfg.SniList[cert.Name] = currentCert
 		localForwardPort+=1
-		if cert.IsWildcard {
+		if isWildcard {
 			cfg.DefaultWildcardCert = cert.Name
 		}
 	}
@@ -154,4 +157,8 @@ func (h* Handler) eventLoop() {
 			}
 		}
 	}
+}
+
+func (h* Handler) Start() {
+	go h.eventLoop()
 }

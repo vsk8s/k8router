@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/onsi/gomega"
 	"github.com/soseth/k8router/pkg/config"
+	"github.com/soseth/k8router/pkg/state"
 	v1coreapi "k8s.io/api/core/v1"
 	v1beta1extensionsapi "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,9 +21,13 @@ func createFakeClientsetAndUUT(t *testing.T, objects ...runtime.Object) (*fake.C
 		},
 	})
 	client := fake.NewSimpleClientset(objects...)
-	uut := ClusterFromConfig(config.ClusterInternal{
+	clusterStateChannel := make(chan state.ClusterState)
+	cfg := config.ClusterInternal{
 		Name: "fake",
-	})
+	}
+	uut := ClusterFromConfig(config.Cluster{
+		&cfg,
+	}, clusterStateChannel)
 	uut.extensionClient = client.ExtensionsV1beta1()
 	uut.coreClient = client.CoreV1()
 	go func() {

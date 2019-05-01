@@ -27,4 +27,6 @@ type TemplateInfo struct {
 	HostToBackend map[string]string
 	// Default certificate to use
 	DefaultWildcardCert string
+	// List of IPs to listen on
+	IPs []*net.IP
 }

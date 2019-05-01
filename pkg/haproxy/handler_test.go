@@ -17,7 +17,6 @@ func TestConfigGeneration(t *testing.T) {
 	ip := net.IPv4(127, 0, 0, 1)
 	cert := config.CertificateInternal{
 		Name: "dummycert",
-		IsWildcard: true,
 		Domains: []string{
 			"*.example.org",
 		},
@@ -25,7 +24,6 @@ func TestConfigGeneration(t *testing.T) {
 	}
 	cert2 := config.CertificateInternal{
 		Name: "dummycert2",
-		IsWildcard: false,
 		Domains: []string{
 			"doc.example.org",
 			"foo.example.org",
@@ -40,6 +38,9 @@ func TestConfigGeneration(t *testing.T) {
 			{
 				CertificateInternal: &cert2,
 			},
+		},
+		IPs: []*net.IP{
+			&ip,
 		},
 	}
 	uut.clusterState["default"] = state.ClusterState{
