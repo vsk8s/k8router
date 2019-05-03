@@ -351,12 +351,14 @@ func (c *Cluster) workLoop() {
 		// TODO: Maybe do smart backoff instead of hardcoded 5-second intervals
 		err := c.connect()
 		if err != nil {
+			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't connect to cluster")
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		// If this works, it'll block. If it doesn't, it will return an error
 		err = c.watch()
 		if err != nil {
+			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't watch cluster resources")
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -374,6 +376,10 @@ func (c *Cluster) workLoop() {
 func (c *Cluster) Start() {
 	c.stopFlag = false
 	go c.workLoop()
+}
+
+// Wait until this handler is ready
+func (c *Cluster) Wait() {
 	_ = <-c.readinessChannel
 }
 

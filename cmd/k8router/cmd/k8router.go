@@ -7,6 +7,8 @@ import (
 	"github.com/soseth/k8router/pkg/haproxy"
 	"github.com/soseth/k8router/pkg/router"
 	"github.com/soseth/k8router/pkg/state"
+	"os"
+	"os/signal"
 )
 
 type K8router struct {
@@ -33,15 +35,23 @@ func (k8r *K8router) Run() {
 	if err != nil {
 		log.WithField("config", k8r.configPath).WithError(err).Fatal("Couldn't load config file!")
 	}
+	log.Debug("Config loaded")
 	eventChan := make(chan state.ClusterState)
 	for _, clusterCfg := range cfg.Clusters {
+		log.WithField("cluster", clusterCfg.Name).Debug("Starting cluster handler")
 		cluster := router.ClusterFromConfig(clusterCfg, eventChan)
 		cluster.Start()
 	}
+	log.Debug("All cluster handlers loaded")
 
 	handler, err := haproxy.Init(eventChan, *cfg)
 	if err != nil {
 		log.WithField("config", k8r.configPath).WithError(err).Fatal("Couldn't init haproxy handler!")
 	}
 	handler.Start()
+	log.Debug("HAProxy handler loaded")
+
+	exitSigChan := make(chan os.Signal, 1)
+	signal.Notify(exitSigChan, os.Interrupt)
+	<-exitSigChan
 }
