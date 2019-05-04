@@ -36,7 +36,7 @@ backend wrap-backend-{{ $cert }}
 
 frontend wrap-frontend-{{ $cert }}
     mode     http
-    bind     127.0.0.1:{{ $details.LocalForwardPort }}  ssl crt {{ $details.Path }} accept-proxy
+    bind     127.0.0.1:{{ $details.LocalForwardPort }} crt {{ $details.Path }} ssl accept-proxy
 
 {{- range $dummyidx, $domain := $details.Domains }}
     acl      acl-https-{{ $domain }} hdr(host) -i {{ $domain }}
