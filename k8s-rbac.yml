@@ -1,29 +1,41 @@
 ---
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
 metadata:
   name: k8router
-  annotations:
-    rbac.authorization.kubernetes.io/autoupdate: "true"
 rules:
-  - apiGroups:
-      - "extensions"
+  - apiGroups: [""]
     resources:
-      - "ingresses"
+      - namespaces
     verbs:
-      - "get"
-      - "watch"
-      - "list"
+      - get
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+    verbs:
+      - watch
+      - list
+      - get
+  - apiGroups: ["extensions"]
+    resources:
+      - ingresses
+    verbs:
+      - watch
+      - list
+      - get
+      - patch
+      - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: k8router
-subjects:
-- kind: User
-  name: k8router
-  apiGroup: rbac.authorization.k8s.io
 roleRef:
+  apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: k8router
-  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: User
+    name: k8router
+    namespace: kube-system
