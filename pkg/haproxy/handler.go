@@ -32,6 +32,7 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 		numChanges:   0,
 		template:     parsedTemplate,
 		clusterState: make(map[string]state.ClusterState),
+		config:       config,
 	}, nil
 }
 
