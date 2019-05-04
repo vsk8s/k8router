@@ -3,7 +3,7 @@ image: soseth/debian-ci-base:stretch
 build:
   stage: build
   script:
-    - gbp buildpackage --git-ignore-branch -b -us -uc
+    - dpkg-buildpackage -b -us -uc
     - mv ../*.deb . # GitLab can't copy from the parent directory...
   artifacts:
     name: packets
