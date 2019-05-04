@@ -13,6 +13,28 @@ import (
 	"text/template"
 )
 
+func findFile(name string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	candidates := []string{
+		path.Join(path.Dir(path.Dir(path.Dir(cwd))), name),
+		path.Join(path.Dir(path.Dir(cwd)), name),
+		path.Join(path.Dir(cwd), name),
+		path.Join(cwd, name),
+	}
+	for _, candidate := range candidates {
+		_, err = os.Stat(candidate)
+		if err == nil {
+			return candidate
+		}
+	}
+
+	panic("Couldn't find file")
+}
+
 func dummyClusterState() state.ClusterState {
 	ip := net.IPv4(127, 0, 0, 1)
 	return state.ClusterState{
@@ -78,7 +100,7 @@ func TestConfigGeneration(t *testing.T) {
 	var err error
 	uut.template = template.New("template")
 	uut.template = uut.template.Funcs(template.FuncMap{"StringJoin": strings.Join})
-	uut.template, err = uut.template.ParseFiles("../../template")
+	uut.template, err = uut.template.ParseFiles(findFile("template"))
 	if err != nil {
 		t.Error(err)
 		return
@@ -122,7 +144,7 @@ func TestConfigEventLoop(t *testing.T) {
 	}
 
 	configObj := config.Config{
-		HAProxyTemplatePath: "../../template",
+		HAProxyTemplatePath: findFile("template"),
 		HAProxyDropinPath:   dropinFile,
 		HAProxyDropinMode:   "775",
 		Certificates: []config.Certificate{
