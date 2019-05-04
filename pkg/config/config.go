@@ -100,6 +100,9 @@ func (c *Certificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if c.Cert == "" {
 		return errors.New("Certificate: cert missing")
 	}
+	if c.Name == "" {
+		return errors.New("Certificate: name missing")
+	}
 	if len(c.Domains) == 0 {
 		return errors.New("Certificate: cert is not valid for any domain?")
 	}
