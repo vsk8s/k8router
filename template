@@ -1,16 +1,55 @@
-{{- range $host, $ips := .BackendIPs }}
-    acl acl-{{ $host }} req_ssl_sni -i {{ $host }}
-    use_backend some-backend if acl-{{ $host }}
+frontend HTTP
+{{- range $dummyidx, $ip := .IPs }}
+    bind     {{ $ip }}:80
+{{- end }}
+{{ range $cert, $details := .SniList }}
+{{- range $dummyidx, $domain := $details.Domains }}
+    acl      acl-http-{{ $domain }} hdr(host) -i {{ $domain }}
+    use_backend backend-{{ index $.HostToBackend $domain }} if acl-http-{{ $domain }}
+{{- end }}
 {{- end }}
 
-{{ range $host, $ips := .BackendIPs }}
-backend {{ $host }}
-    mode http
-    balance leastconn
-    stick-table type ip size 20k peers my-peer
-    stick on src
-    option httpchk GET / more-httpchk-option {{ $host }}
-{{- range $i, $ip := $ips }}
-    server worker-{{ $host }}-{{ $i }} {{ $ip }}:80 check send-proxy
+frontend HTTPS
+{{- range $dummyidx, $ip := .IPs }}
+    bind     {{ $ip }}:443
 {{- end }}
+
+    mode     tcp
+    option   tcplog
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req_ssl_hello_type 1 }
+
+{{- range $cert, $details := .SniList }}
+{{- range $dummyidx, $host := $details.Domains }}
+    acl      acl-{{ $cert }}-{{ $host }} req_ssl_sni -i {{ $host }}
+    use_backend wrap-backend-{{ $cert }} if acl-{{ $cert }}-{{ $host }}
+{{- end }}
+{{- end }}
+{{ if ne .DefaultWildcardCert "" }}
+    default_backend wrap-backend-{{ .DefaultWildcardCert }}
+{{- end }}
+
+{{ range $cert, $details := .SniList }}
+backend wrap-backend-{{ $cert }}
+    mode     tcp
+    server   loopback  127.0.0.1:{{ $details.LocalForwardPort }} send-proxy-v2
+
+frontend wrap-frontend-{{ $cert }}
+    mode     http
+    bind     127.0.0.1:{{ $details.LocalForwardPort }}  ssl crt {{ $details.Path }} accept-proxy
+
+{{- range $dummyidx, $domain := $details.Domains }}
+    acl      acl-https-{{ $domain }} hdr(host) -i {{ $domain }}
+    use_backend backend-{{ index $.HostToBackend $domain }} if acl-https-{{ $domain }}
 {{ end }}
+{{- end }}
+{{ range $backend, $details := .BackendCombinationList }}
+backend backend-{{ $backend }}
+    mode     http
+    balance  source
+    hash-type consistent
+
+{{- range $dummyidx, $server := index $.BackendCombinationList $backend }}
+    server   server-{{ $server.Name }} {{ $server.IP }}:80 check
+{{- end }}
+{{- end }}
