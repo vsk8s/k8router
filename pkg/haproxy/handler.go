@@ -127,6 +127,7 @@ func (h *Handler) rebuildConfig() {
 
 	// Step 3: Which SNIs do we have in our certs (first frontend and it's backends)
 	localForwardPort := 12345 // TODO(uubk): Make configurable
+	hostToCert := map[string]string{}
 	for _, cert := range h.config.Certificates {
 		// For each host: Figure out whether we actually have a backend there
 		var actuallyUsedHosts []string
@@ -138,11 +139,13 @@ func (h *Handler) rebuildConfig() {
 				for actualHost := range hostToBackend {
 					if strings.HasSuffix(actualHost, suffix) {
 						actuallyUsedHosts = append(actuallyUsedHosts, actualHost)
+						hostToCert[actualHost] = cert.Name
 					}
 				}
 			} else {
 				if _, ok := hostToBackend[host]; ok {
 					actuallyUsedHosts = append(actuallyUsedHosts, host)
+					hostToCert[host] = cert.Name
 				}
 			}
 		}
@@ -162,6 +165,14 @@ func (h *Handler) rebuildConfig() {
 			cfg.DefaultWildcardCert = cert.Name
 		}
 	}
+
+	// Check whether we have hosts without certs
+	for host := range hostToBackend {
+		if _, ok := hostToCert[host]; !ok {
+			log.WithField("host", host).Warning("Host skipped because it is not covered by any certificate!")
+		}
+	}
+
 	h.templateInfo = cfg
 }
 
