@@ -20,10 +20,14 @@ func findFile(name string) string {
 	}
 
 	candidates := []string{
-		path.Join(path.Dir(path.Dir(path.Dir(cwd))), name),
-		path.Join(path.Dir(path.Dir(cwd)), name),
-		path.Join(path.Dir(cwd), name),
 		path.Join(cwd, name),
+		path.Join(path.Dir(cwd), name),
+		path.Join(path.Dir(path.Dir(cwd)), name),
+		path.Join(path.Dir(path.Dir(path.Dir(cwd))), name),
+		path.Join(path.Dir(path.Dir(path.Dir(path.Dir(cwd)))), name),
+		path.Join(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(cwd))))), name),
+		path.Join(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(cwd)))))), name),
+		path.Join(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(path.Dir(cwd))))))), name),
 	}
 	for _, candidate := range candidates {
 		_, err = os.Stat(candidate)
