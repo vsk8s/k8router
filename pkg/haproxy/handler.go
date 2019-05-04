@@ -42,7 +42,8 @@ func (h *Handler) updateConfig() {
 	// TODO: Respect file mode setting
 	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.WithError(err).Fatal("Couldn't open haproxy myConfigFile for writing")
+		log.WithField("path", h.config.HAProxyDropinPath).WithError(err).Fatal(
+			"Couldn't open haproxy dropin path for writing")
 	}
 
 	err = h.template.Execute(myConfigFile, h.templateInfo)
@@ -157,7 +158,9 @@ func (h *Handler) eventLoop() {
 			if h.numChanges > 0 {
 				// There is something to do
 				h.numChanges = 0
+				log.WithField("clusterState", h.clusterState).Debug("Rebuilding config")
 				h.rebuildConfig()
+				log.WithField("templateInfo", h.templateInfo).Debug("Templating config")
 				h.updateConfig()
 			}
 		}
