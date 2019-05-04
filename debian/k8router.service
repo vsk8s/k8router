@@ -1,0 +1,12 @@
+[Unit]
+Description=Update HAProxy configuration for kubernetes ingresses
+After=network.target
+ConditionPathExists=/etc/k8router/config.yml
+
+[Service]
+ExecStart=/usr/bin/k8router -config /etc/k8router/config.yml
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

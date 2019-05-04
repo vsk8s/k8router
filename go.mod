@@ -1,4 +1,4 @@
-module github.com/soseth/k8router
+module github.com/SOSETH/k8router
 
 require (
 	github.com/evanphx/json-patch v4.1.0+incompatible // indirect
