@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/kubernetes/typed/core/v1/fake"
 	v1beta1extension "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
 	"net"
@@ -43,6 +42,7 @@ func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.Clu
 		readinessChannel:    make(chan bool, 2),
 		stopFlag:            false,
 	}
+	obj.clusterState.Name = config.Name
 	return &obj
 }
 
@@ -256,25 +256,6 @@ func (c *Cluster) watch() error {
 		}).WithError(err).Warn("Couldn't watch for ingresses, check RBAC!")
 		return err
 	}
-	// We're watching for _new_ ingress events -> load all existing ones
-	ingressList, err := c.extensionClient.Ingresses("").List(metav1.ListOptions{})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"cluster": c.config.Name,
-		}).WithError(err).Warn("Couldn't list existing ingresses, check RBAC!")
-		return err
-	}
-	for _, ingress := range ingressList.Items {
-		obj := state.K8RouterIngress{
-			Name:  ingress.Namespace + "-" + ingress.Name,
-			Hosts: []string{},
-		}
-		for _, rule := range ingress.Spec.Rules {
-			obj.Hosts = append(obj.Hosts, rule.Host)
-		}
-		c.clusterState.Ingresses = append(c.clusterState.Ingresses, obj)
-	}
-	// Handle all (queued) events
 	go c.handleIngressEvents(ingressWatcher.ResultChan(), wg)
 
 	labelMap := map[string]string{}
@@ -288,45 +269,6 @@ func (c *Cluster) watch() error {
 		}).WithError(err).Warn("Couldn't watch for pods, check RBAC!")
 		return err
 	}
-	// We're watching for _new_ pod events -> load all existing ones
-
-	// TODO/XXX: Currently, LabelSelectors are _bugged_ in the fake client used during unit tests
-	// Work around this by skipping the label selector in that case
-	_, ok := c.coreClient.(*fake.FakeCoreV1)
-	var podListOptions metav1.ListOptions
-	if ok {
-		// Testing
-		podListOptions = metav1.ListOptions{}
-	} else {
-		podListOptions = metav1.ListOptions{
-			LabelSelector: labels.SelectorFromSet(labelMap).String(),
-		}
-	}
-
-	podList, err := c.coreClient.Pods(c.config.IngressNamespace).List(podListOptions)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"cluster": c.config.Name,
-		}).WithError(err).Warn("Couldn't list existing pods, check RBAC!")
-		return err
-	}
-	for _, pod := range podList.Items {
-		ip := net.ParseIP(pod.Status.PodIP)
-		if ip == nil {
-			log.WithFields(log.Fields{
-				"cluster": c.config.Name,
-				"pod":     pod.Name,
-				"ip":      pod.Status.PodIP,
-			}).Error("Couldn't parse pod ip")
-			continue
-		}
-		obj := state.K8RouterBackend{
-			IP:   &ip,
-			Name: pod.Name,
-		}
-		c.clusterState.Backends = append(c.clusterState.Backends, obj)
-	}
-	// Handle all (queued) events
 	go c.handlePodEvents(podWatcher.ResultChan(), wg)
 
 	go func() {
