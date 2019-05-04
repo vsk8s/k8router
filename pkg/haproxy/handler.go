@@ -40,7 +40,7 @@ func (h *Handler) updateConfig() {
 	log.Debug("Writing myConfigFile")
 
 	// TODO: Respect file mode setting
-	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE, 0644)
+	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.WithError(err).Fatal("Couldn't open haproxy myConfigFile for writing")
 	}
