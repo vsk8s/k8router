@@ -11,16 +11,19 @@ import (
 	"os/signal"
 )
 
+// K8Router main object, just contains command line arguments
 type K8router struct {
 	configPath string
 	verbose    bool
 }
 
+// Add command line flags
 func (k8r *K8router) setupArgs() {
 	flag.StringVar(&k8r.configPath, "config", "config.yml", "path to configuration file")
 	flag.BoolVar(&k8r.verbose, "verbose", false, "enable verbose logging")
 }
 
+// Run the application
 func (k8r *K8router) Run() {
 	k8r.setupArgs()
 	flag.Parse()
@@ -36,6 +39,7 @@ func (k8r *K8router) Run() {
 		log.WithField("config", k8r.configPath).WithError(err).Fatal("Couldn't load config file!")
 	}
 	log.Debug("Config loaded")
+
 	eventChan := make(chan state.ClusterState)
 	for _, clusterCfg := range cfg.Clusters {
 		log.WithField("cluster", clusterCfg.Name).Debug("Starting cluster handler")
@@ -51,6 +55,7 @@ func (k8r *K8router) Run() {
 	handler.Start()
 	log.Debug("HAProxy handler loaded")
 
+	// Block until exit
 	exitSigChan := make(chan os.Signal, 1)
 	signal.Notify(exitSigChan, os.Interrupt)
 	<-exitSigChan

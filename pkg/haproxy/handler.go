@@ -12,15 +12,27 @@ import (
 	"time"
 )
 
+// This struct takes care of assembling all cluster state and then using it to write a HAProxy config
 type Handler struct {
-	template     *template.Template
-	config       config.Config
-	updates      chan state.ClusterState
+	// Parsed template for HAProxy config
+	template *template.Template
+	// Reference to application configuration
+	config config.Config
+	// Channel with updates from clusters
+	updates chan state.ClusterState
+	// Channel internally used to stop our goroutine
+	stop chan bool
+	// Map of clusters to their current state
 	clusterState map[string]state.ClusterState
-	numChanges   int
+	// Number of changes since the last time we wrote everything to disk
+	numChanges int
+	// Current cluster state prepared for templating
 	templateInfo TemplateInfo
+	// Debug use only: Can be used to be notified when stuff is written to disk
+	debugFileEventChannel chan bool
 }
 
+// Initialize a new Handler
 func Init(updates chan state.ClusterState, config config.Config) (*Handler, error) {
 	parsedTemplate, err := template.ParseFiles(config.HAProxyTemplatePath)
 	if err != nil {
@@ -33,9 +45,11 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 		template:     parsedTemplate,
 		clusterState: make(map[string]state.ClusterState),
 		config:       config,
+		stop:         make(chan bool),
 	}, nil
 }
 
+// Write a new config to disk
 func (h *Handler) updateConfig() {
 	log.Debug("Writing myConfigFile")
 
@@ -52,12 +66,16 @@ func (h *Handler) updateConfig() {
 	}
 
 	// TODO: Replace with systemd API
-	err = exec.Command("sudo", "/bin/systemctl", "restart", "haproxy.service").Run()
-	if err != nil {
-		log.WithError(err).Fatal("Couldn't reload haproxy")
+	if h.debugFileEventChannel == nil {
+		// We're not debugging/testing
+		err = exec.Command("sudo", "/bin/systemctl", "restart", "haproxy.service").Run()
+		if err != nil {
+			log.WithError(err).Fatal("Couldn't reload haproxy")
+		}
 	}
 }
 
+// Regenerate the templateInfo struct
 func (h *Handler) rebuildConfig() {
 	/* The HAProxy config we write works (simplified) like this:
 	 *  * There is a frontend that splits request according to SNI
@@ -67,7 +85,7 @@ func (h *Handler) rebuildConfig() {
 	 */
 
 	// Step 1: For each Ingress, which backends does it have?
-	hostToClusters := make(map[string][]string)
+	hostToClusters := map[string][]string{}
 	for _, cluster := range h.clusterState {
 		for _, ingress := range cluster.Ingresses {
 			for _, host := range ingress.Hosts {
@@ -147,10 +165,14 @@ func (h *Handler) rebuildConfig() {
 	h.templateInfo = cfg
 }
 
+// Main event loop
 func (h *Handler) eventLoop() {
 	updateTicks := time.NewTicker(1 * time.Second)
 	for {
 		select {
+		case _ = <-h.stop:
+			log.Debug("Returning from event loop after stop request")
+			return
 		case event := <-h.updates:
 			h.clusterState[event.Name] = event
 			h.numChanges++
@@ -162,11 +184,20 @@ func (h *Handler) eventLoop() {
 				h.rebuildConfig()
 				log.WithField("templateInfo", h.templateInfo).Debug("Templating config")
 				h.updateConfig()
+				if h.debugFileEventChannel != nil {
+					h.debugFileEventChannel <- true
+				}
 			}
 		}
 	}
 }
 
+// Start handling events
 func (h *Handler) Start() {
 	go h.eventLoop()
+}
+
+// Stop handling events
+func (h *Handler) Stop() {
+	h.stop <- true
 }

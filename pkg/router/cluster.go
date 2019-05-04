@@ -19,16 +19,26 @@ import (
 
 // Handle all single-cluster related tasks
 type Cluster struct {
-	config              config.Cluster
-	extensionClient     v1beta1extension.ExtensionsV1beta1Interface
-	coreClient          v1core.CoreV1Interface
-	ingressEvents       chan state.IngressChange
-	backendEvents       chan state.BackendChange
-	stopChannel         chan bool
-	clusterState        state.ClusterState
-	stopFlag            bool
+	// Config stanza this object takes care of
+	config config.Cluster
+	// K8S client (extensions)
+	extensionClient v1beta1extension.ExtensionsV1beta1Interface
+	// K8S client (core)
+	coreClient v1core.CoreV1Interface
+	// Channel for ingress change events
+	ingressEvents chan state.IngressChange
+	// Channel for backend change events
+	backendEvents chan state.BackendChange
+	// Channel used to stop our goroutines
+	stopChannel chan bool
+	// Current cluster state
+	clusterState state.ClusterState
+	// Whether we want to stop right now
+	stopFlag bool
+	// Channel used for cluster state updates, shared externally
 	clusterStateChannel chan state.ClusterState
-	readinessChannel    chan bool
+	// Channel used for readiness updates
+	readinessChannel chan bool
 }
 
 // Create a new cluster handler for the provided config entry

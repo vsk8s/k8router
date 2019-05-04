@@ -94,9 +94,9 @@ func TestClusterEventHandling(t *testing.T) {
 			return
 		}
 	}
-	// Create ingress
 
-	_, err := client.ExtensionsV1beta1().Ingresses("ingress-nginx").Create(&v1beta1extensionsapi.Ingress{
+	// Create ingress
+	originalIngress := v1beta1extensionsapi.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "dummy-ingress",
 			Namespace: "ingress-nginx",
@@ -108,7 +108,8 @@ func TestClusterEventHandling(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	_, err := client.ExtensionsV1beta1().Ingresses("ingress-nginx").Create(&originalIngress)
 	if err != nil {
 		t.Error(err)
 		return
@@ -120,5 +121,42 @@ func TestClusterEventHandling(t *testing.T) {
 	}
 	g.Expect(len(clusterState.Ingresses)).To(gomega.BeIdenticalTo(1))
 	g.Expect(len(clusterState.Backends)).To(gomega.BeIdenticalTo(3))
+
+	// Delete first two pods
+	for i := 0; i < 2; i++ {
+		name := "ingress-nginx-" + strconv.Itoa(i)
+		err := client.CoreV1().Pods("ingress-nginx").Delete(name, metav1.NewDeleteOptions(100))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	}
+	/* TODO: The following code fragment does not work for some reason
+	 * In theory it should generate an update event. Find out why it doesn't
+	// Edit ingress domain
+	newIngress := v1beta1extensionsapi.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "dummy-ingress",
+			Namespace: "ingress-nginx",
+		},
+		Spec: v1beta1extensionsapi.IngressSpec{
+			Rules: []v1beta1extensionsapi.IngressRule{
+				{
+					Host: "othertest.example.org",
+				},
+			},
+		},
+	}
+	_, err = client.ExtensionsV1beta1().Ingresses("ingress-nginx").Update(&newIngress)*/
+	err = client.ExtensionsV1beta1().Ingresses("ingress-nginx").Delete("dummy-ingress", metav1.NewDeleteOptions(100))
+	g.Expect(err).To(gomega.BeNil(), "Unexpected deletion error")
+	// This should give precisely three events
+	clusterState = <-uut.clusterStateChannel
+	for i := 0; i < 2; i++ {
+		clusterState = <-uut.clusterStateChannel
+	}
+	g.Expect(len(clusterState.Ingresses)).To(gomega.BeIdenticalTo(0))
+	g.Expect(len(clusterState.Backends)).To(gomega.BeIdenticalTo(1))
+
 	uut.Stop()
 }
