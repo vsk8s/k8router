@@ -1,5 +1,11 @@
+k8router (0.1.1-745d26e) unstable; urgency=medium
+
+  * Try to handle watch expiration sensibly
+
+ -- Maximilian Falkenstein <maximilian.falkenstein@sos.ethz.ch>  Tue, 07 May 2019 23:09:31 +0200
+
 k8router (0.1-daee50a) unstable; urgency=medium
 
   * Initial release
 
- -- Maximilian Falkenstein <maximilian.falkenstein@vseth.ethz.ch>  Sat, 04 May 2019 22:30:35 +0200
+ -- Maximilian Falkenstein <maximilian.falkenstein@sos.ethz.ch>  Sat, 04 May 2019 22:30:35 +0200

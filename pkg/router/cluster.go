@@ -39,6 +39,16 @@ type Cluster struct {
 	clusterStateChannel chan state.ClusterState
 	// Channel used for readiness updates
 	readinessChannel chan bool
+	// Map of previously known ingresses (useful after reconnect)
+	knownIngresses map[string]state.K8RouterIngress
+	// Map of previously known pods (useful after reconnect)
+	knownPods map[string]state.K8RouterBackend
+	// Whether this is the first successful connection attempt
+	first bool
+	// Last version of an ingress received
+	lastIngressVersion string
+	// Last version of a pod received
+	lastPodVersion string
 }
 
 // Create a new cluster handler for the provided config entry
@@ -51,6 +61,9 @@ func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.Clu
 		clusterStateChannel: clusterStateChannel,
 		readinessChannel:    make(chan bool, 2),
 		stopFlag:            false,
+		knownIngresses:      map[string]state.K8RouterIngress{},
+		knownPods:           map[string]state.K8RouterBackend{},
+		first:               true,
 	}
 	obj.clusterState.Name = config.Name
 	return &obj
@@ -110,6 +123,7 @@ func (c *Cluster) aggregator() {
 		// Same as above, but for backends
 		case backend := <-c.backendEvents:
 			if backend.Created {
+
 				c.clusterState.Backends = append(c.clusterState.Backends, backend.Backend)
 				log.WithFields(log.Fields{
 					"cluster": c.config.Name,
@@ -118,6 +132,11 @@ func (c *Cluster) aggregator() {
 				}).Info("Detected new backend pod.")
 			} else {
 				// Remove it
+				log.WithFields(log.Fields{
+					"cluster": c.config.Name,
+					"backend": backend.Backend.Name,
+					"ip":      backend.Backend.IP,
+				}).Debug("Detected backend pod removal, searching...")
 				for idx, elm := range c.clusterState.Backends {
 					if elm.Name == backend.Backend.Name {
 						c.clusterState.Backends[idx] = c.clusterState.Backends[len(c.clusterState.Backends)-1]
@@ -139,8 +158,17 @@ func (c *Cluster) aggregator() {
 }
 
 // Take care of events from the pod watcher on ingress pods
-func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg sync.WaitGroup) {
-	for event := range events {
+func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg *sync.WaitGroup) {
+	for {
+		event, ok := <-events
+		if !ok {
+			wg.Done()
+			return
+		}
+		log.WithFields(log.Fields{
+			"cluster": c.config.Name,
+			"obj":     event.Object,
+		}).Debug("Pod event handler tick")
 		if event.Type == watch.Error {
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
@@ -156,6 +184,7 @@ func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg sync.WaitGroup) 
 			}).Error("Got event in pod handler which does not contain a pod?")
 			continue
 		}
+		c.lastPodVersion = eventObj.ResourceVersion
 		ip := net.ParseIP(eventObj.Status.PodIP)
 		if ip == nil {
 			log.WithFields(log.Fields{
@@ -175,14 +204,20 @@ func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg sync.WaitGroup) 
 		}
 		switch event.Type {
 		case watch.Deleted:
+			delete(c.knownPods, eventObj.Namespace+"-"+eventObj.Name)
 			c.backendEvents <- myEvent
 		case watch.Modified:
 			c.backendEvents <- myEvent
 			myEvent.Created = true
 			c.backendEvents <- myEvent
+			c.knownPods[eventObj.Namespace+"-"+eventObj.Name] = obj
 		case watch.Added:
-			myEvent.Created = true
-			c.backendEvents <- myEvent
+			val, ok := c.knownPods[eventObj.Namespace+"-"+eventObj.Name]
+			if !ok || !state.IsBackendEquivalent(&obj, &val) {
+				myEvent.Created = true
+				c.backendEvents <- myEvent
+			}
+			c.knownPods[eventObj.Namespace+"-"+eventObj.Name] = obj
 		default:
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
@@ -192,8 +227,13 @@ func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg sync.WaitGroup) 
 }
 
 // Take care of ingress events from the ingress watch
-func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg sync.WaitGroup) {
-	for event := range events {
+func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg *sync.WaitGroup) {
+	for {
+		event, ok := <-events
+		if !ok {
+			wg.Done()
+			return
+		}
 		eventObj, ok := event.Object.(*v1beta1extensionsapi.Ingress)
 		if !ok && event.Type != watch.Error {
 			log.WithFields(log.Fields{
@@ -201,6 +241,7 @@ func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg sync.WaitGro
 			}).Error("Got event in ingress handler which does not contain an ingress?")
 			continue
 		}
+		c.lastIngressVersion = eventObj.ResourceVersion
 		switch event.Type {
 		case watch.Deleted:
 			event := state.IngressChange{
@@ -210,6 +251,7 @@ func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg sync.WaitGro
 				},
 				Created: false,
 			}
+			delete(c.knownIngresses, event.Ingress.Name)
 			c.ingressEvents <- event
 		case watch.Modified:
 		case watch.Added:
@@ -224,11 +266,16 @@ func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg sync.WaitGro
 				Ingress: obj,
 				Created: false,
 			}
-			if event.Type == watch.Modified {
+			val, _ := c.knownIngresses[obj.Name]
+			isEquivalent := ok && state.IsIngressEquivalent(&obj, &val)
+			if event.Type == watch.Modified && !isEquivalent {
 				c.ingressEvents <- myEvent
 			}
-			myEvent.Created = true
-			c.ingressEvents <- myEvent
+			if !isEquivalent {
+				myEvent.Created = true
+				c.ingressEvents <- myEvent
+			}
+			c.knownIngresses[obj.Name] = obj
 		case watch.Error:
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
@@ -258,28 +305,42 @@ func (c *Cluster) watch() error {
 
 	// We're connected -> setup watches
 	wg := sync.WaitGroup{}
+	var timeout int64 = 600 // 10 minutes
 	wg.Add(2)
-	ingressWatcher, err := c.extensionClient.Ingresses("").Watch(metav1.ListOptions{})
+	watchOptions := metav1.ListOptions{
+		Watch:          true,
+		TimeoutSeconds: &timeout,
+	}
+	if c.lastIngressVersion != "" {
+		watchOptions.ResourceVersion = c.lastIngressVersion
+	}
+	ingressWatcher, err := c.extensionClient.Ingresses("").Watch(watchOptions)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"cluster": c.config.Name,
 		}).WithError(err).Warn("Couldn't watch for ingresses, check RBAC!")
 		return err
 	}
-	go c.handleIngressEvents(ingressWatcher.ResultChan(), wg)
+	go c.handleIngressEvents(ingressWatcher.ResultChan(), &wg)
 
 	labelMap := map[string]string{}
 	labelMap["app.kubernetes.io/name"] = c.config.IngressAppName
-	podWatcher, err := c.coreClient.Pods(c.config.IngressNamespace).Watch(metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labelMap).String(),
-	})
+	watchOptions = metav1.ListOptions{
+		Watch:          true,
+		TimeoutSeconds: &timeout,
+		LabelSelector:  labels.SelectorFromSet(labelMap).String(),
+	}
+	if c.lastPodVersion != "" {
+		watchOptions.ResourceVersion = c.lastPodVersion
+	}
+	podWatcher, err := c.coreClient.Pods(c.config.IngressNamespace).Watch(watchOptions)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"cluster": c.config.Name,
 		}).WithError(err).Warn("Couldn't watch for pods, check RBAC!")
 		return err
 	}
-	go c.handlePodEvents(podWatcher.ResultChan(), wg)
+	go c.handlePodEvents(podWatcher.ResultChan(), &wg)
 
 	go func() {
 		_ = <-c.stopChannel
@@ -288,8 +349,15 @@ func (c *Cluster) watch() error {
 	}()
 
 	go c.aggregator()
-	c.readinessChannel <- true
+	if c.first {
+		c.readinessChannel <- true
+		c.first = false
+	}
 	wg.Wait()
+
+	log.WithFields(log.Fields{
+		"cluster": c.config.Name,
+	}).Debug("Stopping event handlers")
 
 	// Stop the goroutines
 	c.stopChannel <- true
@@ -322,6 +390,10 @@ func (c *Cluster) workLoop() {
 			break
 		}
 	}
+	close(c.readinessChannel)
+	close(c.stopChannel)
+	close(c.ingressEvents)
+	close(c.backendEvents)
 }
 
 // Start watching for cluster events
@@ -337,6 +409,7 @@ func (c *Cluster) Wait() {
 
 // Stop watching for cluster events
 func (c *Cluster) Stop() {
+	// TODO: Fix this and use it
 	c.stopFlag = true
 	c.stopChannel <- true
 	c.stopChannel <- true
