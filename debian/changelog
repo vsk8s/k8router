@@ -1,3 +1,9 @@
+k8router (0.1.2-0944d01) unstable; urgency=medium
+
+  * Only rewrite config when we have changes
+
+ -- Maximilian Falkenstein <maximilian.falkenstein@sos.ethz.ch>  Tue, 07 May 2019 23:20:20 +0200
+
 k8router (0.1.1-745d26e) unstable; urgency=medium
 
   * Try to handle watch expiration sensibly

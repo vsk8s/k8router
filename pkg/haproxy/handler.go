@@ -185,8 +185,11 @@ func (h *Handler) eventLoop() {
 			log.Debug("Returning from event loop after stop request")
 			return
 		case event := <-h.updates:
-			h.clusterState[event.Name] = event
-			h.numChanges++
+			stateObj := h.clusterState[event.Name]
+			if !state.IsClusterStateEquivalent(&stateObj, &event) {
+				h.clusterState[event.Name] = event
+				h.numChanges++
+			}
 		case _ = <-updateTicks.C:
 			if h.numChanges > 0 {
 				// There is something to do
