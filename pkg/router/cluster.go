@@ -317,9 +317,9 @@ func (c *Cluster) watch() error {
 		Watch:          true,
 		TimeoutSeconds: &timeout,
 	}
-	if c.lastIngressVersion != "" {
-		watchOptions.ResourceVersion = c.lastIngressVersion
-	}
+	//if c.lastIngressVersion != "" {
+	//	watchOptions.ResourceVersion = c.lastIngressVersion
+	//}
 	ingressWatcher, err := c.extensionClient.Ingresses("").Watch(watchOptions)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -336,9 +336,9 @@ func (c *Cluster) watch() error {
 		TimeoutSeconds: &timeout,
 		LabelSelector:  labels.SelectorFromSet(labelMap).String(),
 	}
-	if c.lastPodVersion != "" {
-		watchOptions.ResourceVersion = c.lastPodVersion
-	}
+	//if c.lastPodVersion != "" {
+	//	watchOptions.ResourceVersion = c.lastPodVersion
+	//}
 	podWatcher, err := c.coreClient.Pods(c.config.IngressNamespace).Watch(watchOptions)
 	if err != nil {
 		log.WithFields(log.Fields{
