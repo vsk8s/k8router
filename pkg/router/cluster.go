@@ -173,7 +173,7 @@ func (c *Cluster) handlePodEvents(events <-chan watch.Event, wg *sync.WaitGroup)
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
 				"obj":     event.Object,
-			}).Warning("Got error in event handler, aborting for reconnect...")
+			}).Warning("Got error in Pod event handler, aborting for reconnect...")
 			wg.Done()
 			return
 		}
@@ -286,7 +286,7 @@ func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg *sync.WaitGr
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
 				"obj":     event.Object,
-			}).Warning("Got error in event handler, aborting for reconnect...")
+			}).Warning("Got error in Ingress event handler, aborting for reconnect...")
 			wg.Done()
 			return
 		default:
