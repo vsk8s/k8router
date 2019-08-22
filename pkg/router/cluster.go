@@ -235,10 +235,16 @@ func (c *Cluster) handleIngressEvents(events <-chan watch.Event, wg *sync.WaitGr
 			return
 		}
 		eventObj, ok := event.Object.(*v1beta1extensionsapi.Ingress)
-		if !ok && event.Type != watch.Error {
-			log.WithFields(log.Fields{
-				"cluster": c.config.Name,
-			}).Error("Got event in ingress handler which does not contain an ingress?")
+		if !ok {
+			if event.Type != watch.Error {
+				log.WithFields(log.Fields{
+					"cluster": c.config.Name,
+				}).Error("Got event in ingress handler which does not contain an ingress?")
+			} else {
+				log.WithFields(log.Fields{
+					"cluster": c.config.Name,
+				}).Error("Some other error")
+			}
 			continue
 		}
 		c.lastIngressVersion = eventObj.ResourceVersion
