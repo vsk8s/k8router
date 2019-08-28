@@ -1,14 +1,21 @@
 # k8router
 
+This is a software project by SOSETH and VIS to manage several external
+load-balancers which forward traffic to several Kubernetes clusters.
+
 Externally expose kubernetes ingresses using HAProxy and terminate TLS for them.
 
+## Problem Description
+
+Given a set of n Kubernetes clusters and m pairs of load-balancers to each of
+them, the goal of the project is to transport information about available
+domains in each cluster to all load-balancers such that any router is able to
+forward traffic any cluster.
+
 ### Open Tasks
- * Figure out why update/patch on the fake client set doesn't get propagated. This prevents us
-   from writing more interesting unit tests...
- * Debian packaging
+ * Figure out why update/patch on the fake client set doesn't get propagated.
+   This prevents us from writing more interesting unit tests...
  * systemd integration (instead of doing `sudo systemctl ...`)
- * Licensing (Apache or something?)
- * CI/CD, RelEng
 
 ### Prerequisites
 
@@ -19,8 +26,13 @@ Externally expose kubernetes ingresses using HAProxy and terminate TLS for them.
       See `k8s-rbac.yml` for more information.
 * Certificates for all your domains.
 
+Each Kubernetes cluster has to expose its API to all the routers. Every kubelet
+node has to be accessible by all routers.
+
 ### Configuration
+
 An example configuration might look like this:
+
 ```
 haproxyDropinPath: /etc/haproxy/conf.d/90-k8router.conf
 haproxyTemplatePath: /root/template
@@ -40,12 +52,17 @@ certificates:
 ips:
   - 1.2.3.4
 ```
-This will generate a configuration at `/etc/haproxy/conf.d/90-k8router.conf` from `/root/template` for
-one cluster (`/etc/k8router/k8s/kubeconfig.yml`), using two certificates and one external IP. An example
-template file is included [here](template), note that the certificates are specified as directories (see the
-[HAProxy docs](https://cbonte.github.io/haproxy-dconv/1.9/configuration.html#5.1-crt) on this one).
+
+This will generate a configuration at `/etc/haproxy/conf.d/90-k8router.conf`
+from `/root/template` for one cluster (`/etc/k8router/k8s/kubeconfig.yml`),
+using two certificates and one external IP. An example template file is included
+[here](template), note that the certificates are specified as directories (see
+the [HAProxy
+docs](https://cbonte.github.io/haproxy-dconv/1.9/configuration.html#5.1-crt) on
+this one).
 
 ### Running
-Just execute `./k8router -verbose -config <path/to/config>` in a terminal, the log output should tell you
-if something goes wrong. At the moment, (due to systemd integration), we still require passwordless sudo
-for the service user.
+
+Execute `./k8router -verbose -config <path/to/config>` in a terminal, the log
+output should tell you if something goes wrong. Due to missing systemd
+integration we still require passwordless sudo for the service user.
