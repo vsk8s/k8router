@@ -1,6 +1,6 @@
 package state
 
-// Check whether two backends are equivalent in the context of update coalescing
+// IsBackendEquivalent checks whether two backends are equivalent in the context of update coalescing
 func IsBackendEquivalent(backendA *K8RouterBackend, backendB *K8RouterBackend) bool {
 	if backendA == nil || backendB == nil {
 		return false
@@ -11,7 +11,7 @@ func IsBackendEquivalent(backendA *K8RouterBackend, backendB *K8RouterBackend) b
 	return backendA.IP.Equal(*backendB.IP)
 }
 
-// Check whether two Ingresses are equivalent in the context of update coalescing
+// IsIngressEquivalent checks whether two Ingresses are equivalent in the context of update coalescing
 func IsIngressEquivalent(ingressA *K8RouterIngress, ingressB *K8RouterIngress) bool {
 	if ingressA == nil || ingressB == nil {
 		return false
@@ -30,7 +30,7 @@ func IsIngressEquivalent(ingressA *K8RouterIngress, ingressB *K8RouterIngress) b
 	return true
 }
 
-// Check whether two whole cluster state objects are equivalent in the context of update coalescing
+// IsClusterStateEquivalent checks whether two whole cluster state objects are equivalent in the context of update coalescing
 func IsClusterStateEquivalent(clusterA *ClusterState, clusterB *ClusterState) bool {
 	if clusterA == nil || clusterB == nil {
 		return false

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// This struct takes care of assembling all cluster state and then using it to write a HAProxy config
+// Handler takes care of assembling all cluster state and then uses it to write a HAProxy config
 type Handler struct {
 	// Parsed template for HAProxy config
 	template *template.Template
@@ -32,7 +32,7 @@ type Handler struct {
 	debugFileEventChannel chan bool
 }
 
-// Initialize a new Handler
+// Init initializes a new Handler
 func Init(updates chan state.ClusterState, config config.Config) (*Handler, error) {
 	parsedTemplate, err := template.ParseFiles(config.HAProxyTemplatePath)
 	if err != nil {
@@ -160,7 +160,7 @@ func (h *Handler) rebuildConfig() {
 			LocalForwardPort: localForwardPort,
 		}
 		cfg.SniList[cert.Name] = currentCert
-		localForwardPort += 1
+		localForwardPort++
 		if isWildcard {
 			cfg.DefaultWildcardCert = cert.Name
 		}

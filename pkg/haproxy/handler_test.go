@@ -164,7 +164,7 @@ func TestConfigEventLoop(t *testing.T) {
 		},
 		Clusters: []config.Cluster{
 			{
-				&cluster,
+				ClusterInternal: &cluster,
 			},
 		},
 	}

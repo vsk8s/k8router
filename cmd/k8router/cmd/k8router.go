@@ -11,7 +11,7 @@ import (
 	"os/signal"
 )
 
-// K8Router main object, just contains command line arguments
+// K8router main object, just contains command line arguments
 type K8router struct {
 	configPath string
 	verbose    bool

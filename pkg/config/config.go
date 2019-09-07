@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-// Everything you ever wanted to know about a certificate
+// CertificateInternal contains everything you ever wanted to know about a certificate
 type CertificateInternal struct {
 	// How the certificate is named internally
 	Name string `yaml:"name"`
@@ -17,7 +17,7 @@ type CertificateInternal struct {
 	Domains []string `yaml:"domains"`
 }
 
-// Describe all information we need to know about a cluster
+// ClusterInternal describes all information we need to know about a cluster
 type ClusterInternal struct {
 	// Name of the cluster (used for logging)
 	Name string `yaml:"name"`
@@ -31,17 +31,17 @@ type ClusterInternal struct {
 	IngressPort int `yaml:"ingressPort"`
 }
 
-// This struct only exists for parser trickery
+// Cluster only exists for parser trickery
 type Cluster struct {
 	*ClusterInternal
 }
 
-// This struct only exists for parser trickery
+// Certificate only exists for parser trickery
 type Certificate struct {
 	*CertificateInternal
 }
 
-// The main k8router config. This is deserialized from YAML using the annotations
+// Config represents the main k8router config. This is deserialized from YAML using the annotations
 type Config struct {
 	// Path to the config template to use for HAProxy
 	HAProxyTemplatePath string `yaml:"haproxyTemplatePath"`
@@ -57,7 +57,7 @@ type Config struct {
 	IPs []*net.IP `yaml:"ips"`
 }
 
-// Custom deserializer for 'Cluster' in order to transparently provide default values where applicable
+// UnmarshalYAML is a custom deserializer for 'Cluster' in order to transparently provide default values where applicable
 func (c *Cluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	obj := ClusterInternal{}
 	err := unmarshal(&obj)
@@ -86,7 +86,7 @@ func (c *Cluster) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// Custom deserializer for 'Certificate' in order to transparently provide default values where applicable
+// UnmarshalYAML is a custom deserializer for 'Certificate' in order to transparently provide default values where applicable
 func (c *Certificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	obj := CertificateInternal{}
 	err := unmarshal(&obj)
@@ -110,7 +110,7 @@ func (c *Certificate) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// Create a config object by parsing it from file
+// FromFile creates a config object by parsing it from file
 func FromFile(path string) (*Config, error) {
 	obj := Config{}
 	data, err := ioutil.ReadFile(path)

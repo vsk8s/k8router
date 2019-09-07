@@ -2,32 +2,32 @@ package state
 
 import "net"
 
-// All ingress-related information
+// K8RouterIngress contains all ingress-related information
 type K8RouterIngress struct {
 	Name  string
 	Hosts []string
 }
 
-// All backend-related information
+// K8RouterBackend contains all backend-related information
 type K8RouterBackend struct {
 	Name string
 	IP   *net.IP
 }
 
-// The full state of a given ClusterInternal. This should be enough to build the haproxy config
+// ClusterState contains the full state of a given ClusterInternal. This should be enough to build the haproxy config
 type ClusterState struct {
 	Name      string
 	Ingresses []K8RouterIngress
 	Backends  []K8RouterBackend
 }
 
-// An ingress change event
+// IngressChange represents an ingress change event
 type IngressChange struct {
 	Ingress K8RouterIngress
 	Created bool
 }
 
-// A backend change event
+// BackendChange contains a backend change event
 type BackendChange struct {
 	Backend K8RouterBackend
 	Created bool

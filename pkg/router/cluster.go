@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// Handle all single-cluster related tasks
+// Cluster handles all single-cluster related tasks
 type Cluster struct {
 	// Config stanza this object takes care of
 	config config.Cluster
@@ -51,7 +51,7 @@ type Cluster struct {
 	lastPodVersion string
 }
 
-// Create a new cluster handler for the provided config entry
+// ClusterFromConfig creates a new cluster handler for the provided config entry
 func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
 	obj := Cluster{
 		config:              config,

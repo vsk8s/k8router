@@ -2,6 +2,7 @@ package haproxy
 
 import "net"
 
+// SniDetail contains a certificate's details
 type SniDetail struct {
 	// List of domains this certificate is valid for. Filtered to domains actually required
 	Domains []string
@@ -13,11 +14,13 @@ type SniDetail struct {
 	Path string
 }
 
+// Backend represents an ingress backend
 type Backend struct {
 	IP   *net.IP
 	Name string
 }
 
+// TemplateInfo contains all information passed to the HAProxy config template
 type TemplateInfo struct {
 	// Map of certificate names to their details as required for the different config sections
 	SniList map[string]SniDetail
