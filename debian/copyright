@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: k8router
-Source: <https://github.com/SOSETH/k8router>
+Source: <https://github.com/vsk8s/k8router>
 
 Files: *
 Copyright: 2019 Maximilian Falkenstein, SOSETH <maximilian.falkenstein@sos.ethz.ch>

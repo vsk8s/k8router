@@ -2,8 +2,8 @@ package haproxy
 
 import (
 	"bytes"
-	"github.com/SOSETH/k8router/pkg/config"
-	"github.com/SOSETH/k8router/pkg/state"
+	"github.com/vsk8s/k8router/pkg/config"
+	"github.com/vsk8s/k8router/pkg/state"
 	"github.com/onsi/gomega"
 	"net"
 	"os"

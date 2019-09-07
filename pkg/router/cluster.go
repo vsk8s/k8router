@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/SOSETH/k8router/pkg/config"
-	"github.com/SOSETH/k8router/pkg/state"
+	"github.com/vsk8s/k8router/pkg/config"
+	"github.com/vsk8s/k8router/pkg/state"
 	log "github.com/sirupsen/logrus"
 	v1coreapi "k8s.io/api/core/v1"
 	v1beta1extensionsapi "k8s.io/api/extensions/v1beta1"
