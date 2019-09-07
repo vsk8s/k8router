@@ -9,9 +9,9 @@ jobs:
           keys:
             - go-mod-v1-{{ checksum "go.sum" }}
       - run: go build github.com/vsk8s/k8router/cmd/k8router
-      - run: gotestsum --junitfile unit-tests.xml
+      - run: mkdir unittests && gotestsum --junitfile unittests/unit-tests.xml ./...
       - store_test_results:
-          path: unit-tests.xml
+          path: unittests
       - run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
       - run: bash <(curl -s https://codecov.io/bash)
       - save_cache:
