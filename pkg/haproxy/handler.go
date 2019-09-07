@@ -1,9 +1,9 @@
 package haproxy
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/state"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
 	"sort"

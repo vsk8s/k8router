@@ -1,9 +1,9 @@
 package router
 
 import (
+	"github.com/onsi/gomega"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/state"
-	"github.com/onsi/gomega"
 	v1coreapi "k8s.io/api/core/v1"
 	v1beta1extensionsapi "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

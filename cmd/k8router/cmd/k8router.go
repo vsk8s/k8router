@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"flag"
+	log "github.com/sirupsen/logrus"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/haproxy"
 	"github.com/vsk8s/k8router/pkg/router"
 	"github.com/vsk8s/k8router/pkg/state"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 )

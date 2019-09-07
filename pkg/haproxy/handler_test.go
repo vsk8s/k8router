@@ -2,9 +2,9 @@ package haproxy
 
 import (
 	"bytes"
+	"github.com/onsi/gomega"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/state"
-	"github.com/onsi/gomega"
 	"net"
 	"os"
 	"path"
