@@ -8,7 +8,7 @@ jobs:
       - restore_cache:
           keys:
             - go-mod-v1-{{ checksum "go.sum" }}
-      - run: github.com/vsk8s/k8router/cmd/k8router
+      - run: go build github.com/vsk8s/k8router/cmd/k8router
       - run: go test -race -coverprofile=coverage.txt -covermode=atomic
       - run: bash <(curl -s https://codecov.io/bash)
       - save_cache:
