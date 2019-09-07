@@ -1,4 +1,9 @@
 # k8router
+[![Build Status](https://img.shields.io/circleci/build/github/vsk8s/k8router?style=flat)](https://circleci.com/gh/vsk8s/k8router)
+[![Go Report Card](https://goreportcard.com/badge/github.com/vsk8s/k8router?style=flat)](https://goreportcard.com/report/github.com/vsk8s/k8router)
+[![codecov](https://codecov.io/gh/vsk8s/k8router/branch/master/graph/badge.svg)](https://codecov.io/gh/vsk8s/k8router)
+[![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](http://godoc.org/github.com/vsk8s/k8router)
+[![Release](https://img.shields.io/github/tag/vsk8s/k8router.svg?style=flat)](https://github.com/vsk8s/k8router/releases/latest)
 
 This is a software project by SOSETH and VIS to manage several external
 load-balancers which forward traffic to several Kubernetes clusters.
