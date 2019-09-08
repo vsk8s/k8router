@@ -11,6 +11,7 @@ stages:
 build:
   stage: build
   script:
+    - rm -Rf obj-x86_64-linux-gnu || /bin/true
     - dpkg-buildpackage -b -us -uc
     - mv ../*.deb . # GitLab can't copy from the parent directory...
   artifacts:
