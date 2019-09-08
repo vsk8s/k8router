@@ -31,7 +31,9 @@ func createFakeClientsetAndUUT(t *testing.T, objects ...runtime.Object) (*fake.C
 	uut.extensionClient = client.ExtensionsV1beta1()
 	uut.coreClient = client.CoreV1()
 	go func() {
+		go uut.aggregator()
 		err := uut.watch()
+		uut.aggregatorStopChannel <- true
 		if err != nil {
 			t.Fatal(err)
 		}
