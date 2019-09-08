@@ -31,6 +31,10 @@ type Cluster struct {
 	backendEvents chan state.BackendChange
 	// Channel used to stop our goroutines
 	stopChannel chan bool
+	// Channel used to indicate connection issues and clear all state
+	clearChannel chan bool
+	// Channel used to stop the aggregator logic
+	aggregatorStopChannel chan bool
 	// Current cluster state
 	clusterState state.ClusterState
 	// Whether we want to stop right now
@@ -54,16 +58,18 @@ type Cluster struct {
 // ClusterFromConfig creates a new cluster handler for the provided config entry
 func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
 	obj := Cluster{
-		config:              config,
-		ingressEvents:       make(chan state.IngressChange, 2),
-		backendEvents:       make(chan state.BackendChange, 2),
-		stopChannel:         make(chan bool, 2),
-		clusterStateChannel: clusterStateChannel,
-		readinessChannel:    make(chan bool, 2),
-		stopFlag:            false,
-		knownIngresses:      map[string]state.K8RouterIngress{},
-		knownPods:           map[string]state.K8RouterBackend{},
-		first:               true,
+		config:                config,
+		ingressEvents:         make(chan state.IngressChange, 2),
+		backendEvents:         make(chan state.BackendChange, 2),
+		stopChannel:           make(chan bool, 2),
+		clusterStateChannel:   clusterStateChannel,
+		readinessChannel:      make(chan bool, 2),
+		clearChannel:          make(chan bool, 2),
+		aggregatorStopChannel: make(chan bool, 2),
+		stopFlag:              false,
+		knownIngresses:        map[string]state.K8RouterIngress{},
+		knownPods:             map[string]state.K8RouterBackend{},
+		first:                 true,
 	}
 	obj.clusterState.Name = config.Name
 	return &obj
@@ -151,8 +157,15 @@ func (c *Cluster) aggregator() {
 				}
 			}
 			c.clusterStateChannel <- c.clusterState
-		case _ = <-c.stopChannel:
+		case _ = <-c.aggregatorStopChannel:
 			return
+		case _ = <-c.clearChannel:
+			log.WithFields(log.Fields{
+				"cluster": c.config.Name,
+			}).Debug("Clearing full cluster state...")
+			c.clusterState.Backends = nil
+			c.clusterState.Ingresses = nil
+			c.clusterStateChannel <- c.clusterState
 		}
 	}
 }
@@ -317,6 +330,7 @@ func (c *Cluster) watch() error {
 		Watch:          true,
 		TimeoutSeconds: &timeout,
 	}
+	//TODO(uubk): Catch the "version too old" error and reenable this
 	//if c.lastIngressVersion != "" {
 	//	watchOptions.ResourceVersion = c.lastIngressVersion
 	//}
@@ -354,7 +368,6 @@ func (c *Cluster) watch() error {
 		ingressWatcher.Stop()
 	}()
 
-	go c.aggregator()
 	if c.first {
 		c.readinessChannel <- true
 		c.first = false
@@ -373,19 +386,22 @@ func (c *Cluster) watch() error {
 
 // Main work loop responsible for reconnecting
 func (c *Cluster) workLoop() {
+	go c.aggregator()
 	for {
 		// TODO: Maybe do smart backoff instead of hardcoded 5-second intervals
 		err := c.connect()
 		if err != nil {
+			c.clearChannel <- true
 			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't connect to cluster")
-			time.Sleep(5 * time.Second)
+			time.Sleep(60 * time.Second)
 			continue
 		}
 		// If this works, it'll block. If it doesn't, it will return an error
 		err = c.watch()
 		if err != nil {
+			c.clearChannel <- true
 			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't watch cluster resources")
-			time.Sleep(5 * time.Second)
+			time.Sleep(60 * time.Second)
 			continue
 		}
 		// Since watch() didn't return an error, it's safe to assume that the client was shut down using an ordinary
@@ -396,6 +412,8 @@ func (c *Cluster) workLoop() {
 			break
 		}
 	}
+	c.aggregatorStopChannel <- true
+	close(c.aggregatorStopChannel)
 	close(c.readinessChannel)
 	close(c.stopChannel)
 	close(c.ingressEvents)
