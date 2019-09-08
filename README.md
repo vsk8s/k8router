@@ -4,6 +4,7 @@
 [![codecov](https://codecov.io/gh/vsk8s/k8router/branch/master/graph/badge.svg)](https://codecov.io/gh/vsk8s/k8router)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](http://godoc.org/github.com/vsk8s/k8router)
 [![Release](https://img.shields.io/github/tag/vsk8s/k8router.svg?style=flat)](https://github.com/vsk8s/k8router/releases/latest)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fvsk8s%2Fk8router.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fvsk8s%2Fk8router?ref=badge_shield)
 
 This is a software project by SOSETH and VIS to manage several external
 load-balancers which forward traffic to several Kubernetes clusters.
@@ -71,3 +72,7 @@ this one).
 Execute `./k8router -verbose -config <path/to/config>` in a terminal, the log
 output should tell you if something goes wrong. Due to missing systemd
 integration we still require passwordless sudo for the service user.
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fvsk8s%2Fk8router.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fvsk8s%2Fk8router?ref=badge_large)
