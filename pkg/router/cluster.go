@@ -388,7 +388,7 @@ func (c *Cluster) watch() error {
 func (c *Cluster) workLoop() {
 	go c.aggregator()
 	for {
-		// TODO: Maybe do smart backoff instead of hardcoded 5-second intervals
+		// TODO(uubk): Maybe do smart backoff instead of hardcoded intervals
 		err := c.connect()
 		if err != nil {
 			c.clearChannel <- true
