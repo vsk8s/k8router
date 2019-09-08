@@ -3,7 +3,7 @@
 export GOCACHE=/tmp/gocache-deb-build
 export GO111MODULE=on
 export DH_OPTIONS
-export DH_GOPKG=github.com/SOSETH/k8router
+export DH_GOPKG=github.com/vsk8s/k8router
 
 %:
 	dh $@ --buildsystem=golang --with=golang
