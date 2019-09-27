@@ -1,3 +1,9 @@
+k8router (0.1.4) unstable; urgency=medium
+
+  * Reload haproxy service instead of restarting it
+
+ -- Jan Veen <veenj@vis.ethz.ch> Fri, 27 Sep 2019 18:19:36 +0200
+
 k8router (0.1.3-2d1b840) unstable; urgency=medium
 
   * Support "failthrough", aka still generate the config when nothing is
