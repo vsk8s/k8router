@@ -68,7 +68,7 @@ func (h *Handler) updateConfig() {
 	// TODO: Replace with systemd API
 	if h.debugFileEventChannel == nil {
 		// We're not debugging/testing
-		err = exec.Command("sudo", "/bin/systemctl", "restart", "haproxy.service").Run()
+		err = exec.Command("sudo", "/bin/systemctl", "reload", "haproxy.service").Run()
 		if err != nil {
 			log.WithError(err).Fatal("Couldn't reload haproxy")
 		}
