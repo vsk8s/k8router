@@ -149,10 +149,6 @@ func (h *Handler) rebuildConfig() {
 				}
 			}
 		}
-		if len(actuallyUsedHosts) == 0 && !isWildcard {
-			log.WithField("cert", cert.Name).Info("Skipping certificate as it seems to be unused.")
-			continue
-		}
 		currentCert := SniDetail{
 			Domains:          actuallyUsedHosts,
 			IsWildcard:       isWildcard,
