@@ -1,3 +1,9 @@
+k8router (0.1.5-1) unstable; urgency=medium
+
+  * Rebuild with golang 1.12.10
+
+ -- Maximilian Falkenstein <maximilian.falkenstein@sos.ethz.ch>  Wed, 09 Oct 2019 11:42:08 +0200
+
 k8router (0.1.5) unstable; urgency=medium
 
   * Do not skip 'unused' certificates
