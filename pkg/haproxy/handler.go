@@ -49,28 +49,42 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 	}, nil
 }
 
-// Write a new config to disk
-func (h *Handler) updateConfig() {
-	log.Debug("Writing myConfigFile")
+// Start handling events
+func (h *Handler) Start() {
+	go h.eventLoop()
+}
 
-	// TODO: Respect file mode setting
-	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.WithField("path", h.config.HAProxyDropinPath).WithError(err).Fatal(
-			"Couldn't open haproxy dropin path for writing")
-	}
+// Stop handling events
+func (h *Handler) Stop() {
+	h.stop <- true
+}
 
-	err = h.template.Execute(myConfigFile, h.templateInfo)
-	if err != nil {
-		log.WithError(err).Fatal("Couldn't template haproxy myConfigFile")
-	}
-
-	// TODO: Replace with systemd API
-	if h.debugFileEventChannel == nil {
-		// We're not debugging/testing
-		err = exec.Command("sudo", "/bin/systemctl", "reload", "haproxy.service").Run()
-		if err != nil {
-			log.WithError(err).Fatal("Couldn't reload haproxy")
+// Main event loop
+func (h *Handler) eventLoop() {
+	updateTicks := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case _ = <-h.stop:
+			log.Debug("Returning from event loop after stop request")
+			return
+		case event := <-h.updates:
+			stateObj := h.clusterState[event.Name]
+			if !state.IsClusterStateEquivalent(&stateObj, &event) {
+				h.clusterState[event.Name] = event
+				h.numChanges++
+			}
+		case _ = <-updateTicks.C:
+			if h.numChanges > 0 {
+				// There is something to do
+				h.numChanges = 0
+				log.WithField("clusterState", h.clusterState).Debug("Rebuilding config")
+				h.rebuildConfig()
+				log.WithField("templateInfo", h.templateInfo).Debug("Templating config")
+				h.updateConfig()
+				if h.debugFileEventChannel != nil {
+					h.debugFileEventChannel <- true
+				}
+			}
 		}
 	}
 }
@@ -172,42 +186,28 @@ func (h *Handler) rebuildConfig() {
 	h.templateInfo = cfg
 }
 
-// Main event loop
-func (h *Handler) eventLoop() {
-	updateTicks := time.NewTicker(1 * time.Second)
-	for {
-		select {
-		case _ = <-h.stop:
-			log.Debug("Returning from event loop after stop request")
-			return
-		case event := <-h.updates:
-			stateObj := h.clusterState[event.Name]
-			if !state.IsClusterStateEquivalent(&stateObj, &event) {
-				h.clusterState[event.Name] = event
-				h.numChanges++
-			}
-		case _ = <-updateTicks.C:
-			if h.numChanges > 0 {
-				// There is something to do
-				h.numChanges = 0
-				log.WithField("clusterState", h.clusterState).Debug("Rebuilding config")
-				h.rebuildConfig()
-				log.WithField("templateInfo", h.templateInfo).Debug("Templating config")
-				h.updateConfig()
-				if h.debugFileEventChannel != nil {
-					h.debugFileEventChannel <- true
-				}
-			}
+// Write a new config to disk
+func (h *Handler) updateConfig() {
+	log.Debug("Writing myConfigFile")
+
+	// TODO: Respect file mode setting
+	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.WithField("path", h.config.HAProxyDropinPath).WithError(err).Fatal(
+			"Couldn't open haproxy dropin path for writing")
+	}
+
+	err = h.template.Execute(myConfigFile, h.templateInfo)
+	if err != nil {
+		log.WithError(err).Fatal("Couldn't template haproxy myConfigFile")
+	}
+
+	// TODO: Replace with systemd API
+	if h.debugFileEventChannel == nil {
+		// We're not debugging/testing
+		err = exec.Command("sudo", "/bin/systemctl", "reload", "haproxy.service").Run()
+		if err != nil {
+			log.WithError(err).Fatal("Couldn't reload haproxy")
 		}
 	}
-}
-
-// Start handling events
-func (h *Handler) Start() {
-	go h.eventLoop()
-}
-
-// Stop handling events
-func (h *Handler) Stop() {
-	h.stop <- true
 }
