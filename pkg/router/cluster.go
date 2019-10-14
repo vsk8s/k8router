@@ -17,147 +17,231 @@ import (
 
 // Cluster handles all single-cluster related tasks
 type Cluster struct {
-	// Config stanza this object takes care of
 	config config.Cluster
-	// Channel for ingress change events
+
 	ingressEvents chan state.IngressChange
-	// Channel for backend change events
+
 	backendEvents chan state.BackendChange
+
 	// Channel used to indicate connection issues and clear all state
 	clearChannel chan bool
+
 	// Channel used to stop the aggregator logic
 	aggregatorStopChannel chan bool
-	// Current cluster state
-	clusterState state.ClusterState
+
+	currentClusterState state.ClusterState
+
 	// Whether we want to stop right now
-	stopFlag bool
+	shallExit bool
+
 	// Channel used for cluster state updates, shared externally
 	clusterStateChannel chan state.ClusterState
-	// Channel used for readiness updates
+
 	readinessChannel chan bool
-	// Map of previously known ingresses (useful after reconnect)
+
 	knownIngresses map[string]state.K8RouterIngress
-	// Map of previously known pods (useful after reconnect)
+
 	knownPods map[string]state.K8RouterBackend
-	// Whether this is the first successful connection attempt
-	first bool
-	// Last version of an ingress received
-	lastIngressVersion string
-	// Last version of a pod received
-	lastPodVersion string
+
+	isFirstConnectionAttempt bool
+
+	latestIngressVersion string
+
+	latestPodVersion string
+
 	// Clientset used for the informer API
 	client kubernetes.Interface
 }
 
-// ClusterFromConfig creates a new cluster handler for the provided config entry
-func ClusterFromConfig(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
+// Initialize a new cluster
+func Initialize(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
 	obj := Cluster{
-		config:                config,
-		ingressEvents:         make(chan state.IngressChange, 2),
-		backendEvents:         make(chan state.BackendChange, 2),
-		clusterStateChannel:   clusterStateChannel,
-		readinessChannel:      make(chan bool, 2),
-		clearChannel:          make(chan bool, 2),
-		aggregatorStopChannel: make(chan bool, 2),
-		stopFlag:              false,
-		knownIngresses:        map[string]state.K8RouterIngress{},
-		knownPods:             map[string]state.K8RouterBackend{},
-		first:                 true,
+		config:                   config,
+		ingressEvents:            make(chan state.IngressChange, 2),
+		backendEvents:            make(chan state.BackendChange, 2),
+		clusterStateChannel:      clusterStateChannel,
+		readinessChannel:         make(chan bool, 2),
+		clearChannel:             make(chan bool, 2),
+		aggregatorStopChannel:    make(chan bool, 2),
+		shallExit:                false,
+		knownIngresses:           map[string]state.K8RouterIngress{},
+		knownPods:                map[string]state.K8RouterBackend{},
+		isFirstConnectionAttempt: true,
 	}
-	obj.clusterState.Name = config.Name
+	obj.currentClusterState.Name = config.Name
 	return &obj
 }
 
-// Try to connect to the cluster
-func (c *Cluster) connect() error {
-	kubeCfg, err := clientcmd.LoadFromFile(c.config.Kubeconfig)
-	if err != nil {
-		return err
+// Start the cluster
+func (c *Cluster) Start() {
+	c.shallExit = false
+	go c.eventLoop()
+}
+
+// Wait for the cluster
+func (c *Cluster) Wait() {
+	_ = <-c.readinessChannel
+}
+
+// Stop the cluster
+func (c *Cluster) Stop() {
+	// TODO: Fix this and use it
+	c.shallExit = true
+	c.aggregatorStopChannel <- true
+	c.aggregatorStopChannel <- true
+}
+
+func (c *Cluster) eventLoop() {
+	log.WithField("cluster", c.config.Name).Debug("Starting work loop")
+	go c.aggregateClusterView()
+	firstTry := true
+	for {
+		// TODO(uubk): Maybe do smart backoff instead of hardcoded intervals
+		log.WithField("cluster", c.config.Name).Debug("About to connect")
+		err := c.connect()
+		if err != nil {
+			if firstTry {
+				c.clearChannel <- true
+			}
+			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't connect to cluster")
+			time.Sleep(60 * time.Second)
+			firstTry = false
+			continue
+		}
+		// If this works, it'll block. If it doesn't, it will return an error
+		err = c.watch()
+		if err != nil {
+			if firstTry {
+				c.clearChannel <- true
+			}
+			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't watch cluster resources")
+			time.Sleep(60 * time.Second)
+			firstTry = false
+			continue
+		}
+
+		time.Sleep(1 * time.Second)
+		// Since watch() didn't return an error, it's safe to assume that the client was shut down using an ordinary
+		// exit-on-error -> restart the whole thing in the next loop iteration
+
+		if c.shallExit {
+			log.WithField("cluster", c.config.Name).Info("cluster watcher shutting down")
+			break
+		}
 	}
-	clientCfg, err := clientcmd.NewDefaultClientConfig(*kubeCfg, &clientcmd.ConfigOverrides{}).ClientConfig()
-	if err != nil {
-		return err
-	}
-	c.client, err = kubernetes.NewForConfig(clientCfg)
-	if err != nil {
-		return err
-	}
-	return nil
+	c.aggregatorStopChannel <- true
+	close(c.aggregatorStopChannel)
+	close(c.readinessChannel)
+	close(c.ingressEvents)
+	close(c.backendEvents)
+	log.WithField("cluster", c.config.Name).Debug("Work loop done")
 }
 
 // Aggregate all changes into a new cluster view
-func (c *Cluster) aggregator() {
+func (c *Cluster) aggregateClusterView() {
 	for {
 		select {
-		// We have a new ingress or an ingress has been deleted
-		case ingress := <-c.ingressEvents:
-			if ingress.Created {
-				// It's new, add it to the list
-				c.clusterState.Ingresses = append(c.clusterState.Ingresses, ingress.Ingress)
+		case event := <-c.ingressEvents:
+			if event.Created {
+				c.currentClusterState.Ingresses = append(c.currentClusterState.Ingresses, event.Ingress)
 				log.WithFields(log.Fields{
 					"cluster": c.config.Name,
-					"ingress": ingress.Ingress.Name,
+					"ingress": event.Ingress.Name,
 				}).Info("Detected new ingress.")
 			} else {
-				// Remove it
-				for idx, elm := range c.clusterState.Ingresses {
-					if elm.Name == ingress.Ingress.Name {
-						c.clusterState.Ingresses[idx] = c.clusterState.Ingresses[len(c.clusterState.Ingresses)-1]
-						c.clusterState.Ingresses = c.clusterState.Ingresses[:len(c.clusterState.Ingresses)-1]
+				for i, ingress := range c.currentClusterState.Ingresses {
+					if ingress.Name == event.Ingress.Name {
+						c.currentClusterState.Ingresses[i] = c.currentClusterState.Ingresses[len(c.currentClusterState.Ingresses)-1]
+						c.currentClusterState.Ingresses = c.currentClusterState.Ingresses[:len(c.currentClusterState.Ingresses)-1]
 						log.WithFields(log.Fields{
 							"cluster": c.config.Name,
-							"ingress": ingress.Ingress.Name,
+							"ingress": event.Ingress.Name,
 						}).Info("Removed old ingress.")
 						break
 					}
 				}
 			}
-			c.clusterStateChannel <- c.clusterState
-		// Same as above, but for backends
-		case backend := <-c.backendEvents:
-			if backend.Created {
-
-				c.clusterState.Backends = append(c.clusterState.Backends, backend.Backend)
+			c.clusterStateChannel <- c.currentClusterState
+		case event := <-c.backendEvents:
+			if event.Created {
+				c.currentClusterState.Backends = append(c.currentClusterState.Backends, event.Backend)
 				log.WithFields(log.Fields{
 					"cluster": c.config.Name,
-					"backend": backend.Backend.Name,
-					"ip":      backend.Backend.IP,
+					"backend": event.Backend.Name,
+					"ip":      event.Backend.IP,
 				}).Info("Detected new backend pod.")
 			} else {
-				// Remove it
 				log.WithFields(log.Fields{
 					"cluster": c.config.Name,
-					"backend": backend.Backend.Name,
-					"ip":      backend.Backend.IP,
+					"backend": event.Backend.Name,
+					"ip":      event.Backend.IP,
 				}).Debug("Detected backend pod removal, searching...")
-				for idx, elm := range c.clusterState.Backends {
-					if elm.Name == backend.Backend.Name {
-						c.clusterState.Backends[idx] = c.clusterState.Backends[len(c.clusterState.Backends)-1]
-						c.clusterState.Backends = c.clusterState.Backends[:len(c.clusterState.Backends)-1]
+				for i, backend := range c.currentClusterState.Backends {
+					if backend.Name == event.Backend.Name {
+						c.currentClusterState.Backends[i] = c.currentClusterState.Backends[len(c.currentClusterState.Backends)-1]
+						c.currentClusterState.Backends = c.currentClusterState.Backends[:len(c.currentClusterState.Backends)-1]
 						log.WithFields(log.Fields{
 							"cluster": c.config.Name,
-							"backend": backend.Backend.Name,
-							"ip":      backend.Backend.IP,
+							"backend": event.Backend.Name,
+							"ip":      event.Backend.IP,
 						}).Info("Removed old backend pod.")
 						break
 					}
 				}
 			}
-			c.clusterStateChannel <- c.clusterState
+			c.clusterStateChannel <- c.currentClusterState
 		case _ = <-c.aggregatorStopChannel:
 			return
 		case _ = <-c.clearChannel:
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
 			}).Debug("Clearing full cluster state...")
-			c.clusterState.Backends = nil
-			c.clusterState.Ingresses = nil
-			c.clusterStateChannel <- c.clusterState
+			c.currentClusterState.Backends = nil
+			c.currentClusterState.Ingresses = nil
+			c.clusterStateChannel <- c.currentClusterState
 		}
 	}
 }
 
-// Take care of events from the pod watcher on ingress pods
+// Setup watchers and coordinate their goroutines
+func (c *Cluster) watch() error {
+	log.WithField("cluster", c.config.Name).Debug("Adding watches")
+
+	factory := informers.NewSharedInformerFactory(c.client, 0)
+	stopper := make(chan struct{})
+	defer close(stopper)
+
+	podInformer := factory.Core().V1().Pods().Informer()
+	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.handlePodEvents(obj, watch.Added) },
+		DeleteFunc: func(obj interface{}) { c.handlePodEvents(obj, watch.Deleted) },
+		UpdateFunc: func(old interface{}, new interface{}) { c.handlePodEvents(new, watch.Modified) },
+	})
+	go podInformer.Run(stopper)
+
+	ingressInformer := factory.Extensions().V1beta1().Ingresses().Informer()
+	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.handleIngressEvent(obj, watch.Added) },
+		DeleteFunc: func(obj interface{}) { c.handleIngressEvent(obj, watch.Deleted) },
+		UpdateFunc: func(old interface{}, new interface{}) { c.handleIngressEvent(new, watch.Modified) },
+	})
+	go ingressInformer.Run(stopper)
+
+	if c.isFirstConnectionAttempt {
+		c.readinessChannel <- true
+		c.isFirstConnectionAttempt = false
+	}
+	<-c.aggregatorStopChannel
+	log.WithField("cluster", c.config.Name).Debug("Waiting for watches to exit...")
+
+	log.WithFields(log.Fields{
+		"cluster": c.config.Name,
+	}).Debug("Stopping event handlers")
+
+	log.WithField("cluster", c.config.Name).Debug("Event handlers stopped")
+	return nil
+}
+
 func (c *Cluster) handlePodEvents(event interface{}, action watch.EventType) {
 	log.WithFields(log.Fields{
 		"cluster": c.config.Name,
@@ -173,7 +257,7 @@ func (c *Cluster) handlePodEvents(event interface{}, action watch.EventType) {
 		}).Error("Got event in pod handler which does not contain a pod?")
 		return
 	}
-	c.lastPodVersion = eventObj.ResourceVersion
+	c.latestPodVersion = eventObj.ResourceVersion
 	ip := net.ParseIP(eventObj.Status.PodIP)
 	if ip == nil {
 		log.WithFields(log.Fields{
@@ -221,15 +305,16 @@ func (c *Cluster) handleIngressEvent(event interface{}, action watch.EventType) 
 		if action != watch.Error {
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
-			}).Error("Got event in ingress handler which does not contain an ingress?")
+			}).Error("Got event in ingress handler which contains no ingress")
 		} else {
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
+				"event": event,
 			}).Error("Some other error")
 		}
 		return
 	}
-	c.lastIngressVersion = eventObj.ResourceVersion
+	c.latestIngressVersion = eventObj.ResourceVersion
 	switch action {
 	case watch.Deleted:
 		event := state.IngressChange{
@@ -267,107 +352,18 @@ func (c *Cluster) handleIngressEvent(event interface{}, action watch.EventType) 
 	}
 }
 
-// Setup watchers and coordinate their goroutines
-func (c *Cluster) watch() error {
-	log.WithField("cluster", c.config.Name).Debug("Adding watches")
-
-	factory := informers.NewSharedInformerFactory(c.client, 0)
-	stopper := make(chan struct{})
-	defer close(stopper)
-
-	podInformer := factory.Core().V1().Pods().Informer()
-	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.handlePodEvents(obj, watch.Added) },
-		DeleteFunc: func(obj interface{}) { c.handlePodEvents(obj, watch.Deleted) },
-		UpdateFunc: func(old interface{}, new interface{}) { c.handlePodEvents(new, watch.Modified) },
-	})
-	go podInformer.Run(stopper)
-
-	ingressInformer := factory.Extensions().V1beta1().Ingresses().Informer()
-	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.handleIngressEvent(obj, watch.Added) },
-		DeleteFunc: func(obj interface{}) { c.handleIngressEvent(obj, watch.Deleted) },
-		UpdateFunc: func(old interface{}, new interface{}) { c.handleIngressEvent(new, watch.Modified) },
-	})
-	go ingressInformer.Run(stopper)
-
-	if c.first {
-		c.readinessChannel <- true
-		c.first = false
+func (c *Cluster) connect() error {
+	kubeConfig, err := clientcmd.LoadFromFile(c.config.Kubeconfig)
+	if err != nil {
+		return err
 	}
-	<-c.aggregatorStopChannel
-	log.WithField("cluster", c.config.Name).Debug("Waiting for watches to exit...")
-
-	log.WithFields(log.Fields{
-		"cluster": c.config.Name,
-	}).Debug("Stopping event handlers")
-
-	log.WithField("cluster", c.config.Name).Debug("Event handlers stopped")
+	clientConfig, err := clientcmd.NewDefaultClientConfig(*kubeConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return err
+	}
+	c.client, err = kubernetes.NewForConfig(clientConfig)
+	if err != nil {
+		return err
+	}
 	return nil
-}
-
-// Main work loop responsible for reconnecting
-func (c *Cluster) workLoop() {
-	log.WithField("cluster", c.config.Name).Debug("Starting work loop")
-	go c.aggregator()
-	firstTry := true
-	for {
-		// TODO(uubk): Maybe do smart backoff instead of hardcoded intervals
-		log.WithField("cluster", c.config.Name).Debug("About to connect")
-		err := c.connect()
-		if err != nil {
-			if firstTry {
-				c.clearChannel <- true
-			}
-			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't connect to cluster")
-			time.Sleep(60 * time.Second)
-			firstTry = false
-			continue
-		}
-		// If this works, it'll block. If it doesn't, it will return an error
-		err = c.watch()
-		if err != nil {
-			if firstTry {
-				c.clearChannel <- true
-			}
-			log.WithField("cluster", c.config.Name).WithError(err).Info("Couldn't watch cluster resources")
-			time.Sleep(60 * time.Second)
-			firstTry = false
-			continue
-		}
-
-		time.Sleep(1 * time.Second)
-		// Since watch() didn't return an error, it's safe to assume that the client was shut down using an ordinary
-		// exit-on-error -> restart the whole thing in the next loop iteration
-
-		// ...except if we're to exit
-		if c.stopFlag {
-			break
-		}
-	}
-	c.aggregatorStopChannel <- true
-	close(c.aggregatorStopChannel)
-	close(c.readinessChannel)
-	close(c.ingressEvents)
-	close(c.backendEvents)
-	log.WithField("cluster", c.config.Name).Debug("Work loop done")
-}
-
-// Start watching for cluster events
-func (c *Cluster) Start() {
-	c.stopFlag = false
-	go c.workLoop()
-}
-
-// Wait until this handler is ready
-func (c *Cluster) Wait() {
-	_ = <-c.readinessChannel
-}
-
-// Stop watching for cluster events
-func (c *Cluster) Stop() {
-	// TODO: Fix this and use it
-	c.stopFlag = true
-	c.aggregatorStopChannel <- true
-	c.aggregatorStopChannel <- true
 }

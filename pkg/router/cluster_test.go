@@ -26,12 +26,12 @@ func createFakeClientsetAndUUT(t *testing.T, objects ...runtime.Object) (*fake.C
 		Name:             "fake",
 		IngressNamespace: "ingress-nginx",
 	}
-	uut := ClusterFromConfig(config.Cluster{
+	uut := Initialize(config.Cluster{
 		ClusterInternal: &cfg,
 	}, clusterStateChannel)
 	uut.client = client
 	go func() {
-		go uut.aggregator()
+		go uut.aggregateClusterView()
 		err := uut.watch()
 		uut.aggregatorStopChannel <- true
 		if err != nil {
