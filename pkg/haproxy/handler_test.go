@@ -109,7 +109,7 @@ func TestConfigGeneration(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	uut.rebuildConfig()
+	uut.regenerateTemplateInfo()
 	s := ""
 	buf := bytes.NewBufferString(s)
 	err = uut.template.Execute(buf, uut.templateInfo)
@@ -171,7 +171,7 @@ func TestConfigEventLoop(t *testing.T) {
 	eventChannel := make(chan state.ClusterState)
 	debugEventChannel := make(chan bool)
 
-	uut, err := Init(eventChannel, configObj)
+	uut, err := Initialize(eventChannel, configObj)
 	g.Expect(err).To(gomega.BeNil(), "Unexpected initialization error")
 	uut.debugFileEventChannel = debugEventChannel
 	uut.Start()

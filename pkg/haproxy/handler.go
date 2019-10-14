@@ -12,75 +12,76 @@ import (
 	"time"
 )
 
-// Handler takes care of assembling all cluster state and then uses it to write a HAProxy config
+// Handler assembles all ClusterStates and configure haproxy
 type Handler struct {
-	// Parsed template for HAProxy config
-	template *template.Template
-	// Reference to application configuration
 	config config.Config
-	// Channel with updates from clusters
+
 	updates chan state.ClusterState
-	// Channel internally used to stop our goroutine
-	stop chan bool
-	// Map of clusters to their current state
+
+	// cluster name to state
 	clusterState map[string]state.ClusterState
-	// Number of changes since the last time we wrote everything to disk
-	numChanges int
-	// Current cluster state prepared for templating
+
+	template *template.Template
+
+	// Current state for templating
 	templateInfo TemplateInfo
-	// Debug use only: Can be used to be notified when stuff is written to disk
+
+	haproxyNeedsUpdate bool
+
+	// Channel to stop our goroutine
+	stopper chan bool
+
+	// Debug use only: Be notified when template is written to disk
 	debugFileEventChannel chan bool
 }
 
-// Init initializes a new Handler
-func Init(updates chan state.ClusterState, config config.Config) (*Handler, error) {
+// Initialize a new handler
+func Initialize(updates chan state.ClusterState, config config.Config) (*Handler, error) {
 	parsedTemplate, err := template.ParseFiles(config.HAProxyTemplatePath)
 	if err != nil {
 		return nil, err
 	}
 	parsedTemplate.Funcs(template.FuncMap{"StringJoin": strings.Join})
 	return &Handler{
-		updates:      updates,
-		numChanges:   0,
-		template:     parsedTemplate,
-		clusterState: make(map[string]state.ClusterState),
-		config:       config,
-		stop:         make(chan bool),
+		updates:            updates,
+		haproxyNeedsUpdate: false,
+		template:           parsedTemplate,
+		clusterState:       make(map[string]state.ClusterState),
+		config:             config,
+		stopper:            make(chan bool),
 	}, nil
 }
 
-// Start handling events
+// Start the handler
 func (h *Handler) Start() {
 	go h.eventLoop()
 }
 
-// Stop handling events
+// Stop the handler
 func (h *Handler) Stop() {
-	h.stop <- true
+	h.stopper <- true
 }
 
-// Main event loop
 func (h *Handler) eventLoop() {
 	updateTicks := time.NewTicker(1 * time.Second)
 	for {
 		select {
-		case _ = <-h.stop:
+		case _ = <-h.stopper:
 			log.Debug("Returning from event loop after stop request")
 			return
-		case event := <-h.updates:
-			stateObj := h.clusterState[event.Name]
-			if !state.IsClusterStateEquivalent(&stateObj, &event) {
-				h.clusterState[event.Name] = event
-				h.numChanges++
+		case newState := <-h.updates:
+			currentState := h.clusterState[newState.Name]
+			if !state.IsClusterStateEquivalent(&currentState, &newState) {
+				h.clusterState[newState.Name] = newState
+				h.haproxyNeedsUpdate = true
 			}
 		case _ = <-updateTicks.C:
-			if h.numChanges > 0 {
-				// There is something to do
-				h.numChanges = 0
+			if h.haproxyNeedsUpdate {
+				h.haproxyNeedsUpdate = false
 				log.WithField("clusterState", h.clusterState).Debug("Rebuilding config")
-				h.rebuildConfig()
+				h.regenerateTemplateInfo()
 				log.WithField("templateInfo", h.templateInfo).Debug("Templating config")
-				h.updateConfig()
+				h.writeConfigToHAProxy()
 				if h.debugFileEventChannel != nil {
 					h.debugFileEventChannel <- true
 				}
@@ -89,34 +90,78 @@ func (h *Handler) eventLoop() {
 	}
 }
 
-// Regenerate the templateInfo struct
-func (h *Handler) rebuildConfig() {
+func (h *Handler) regenerateTemplateInfo() {
 	/* The HAProxy config we write works (simplified) like this:
 	 *  * There is a frontend that splits request according to SNI
-	 *  * For each certificate, we have a backend where those SNI request go to and another frontend with that cert
-	 *  * Each of these frontends does "normal" host-style case distinction and then
+	 *  * We have a backend where all SNI requests go to and another frontend
+	 *  * This frontend does "normal" host-style case distinction and then
 	 *  * routes to a combination of backends
 	 */
 
-	// Step 1: For each Ingress, which backends does it have?
-	hostToClusters := map[string][]string{}
-	for _, cluster := range h.clusterState {
-		for _, ingress := range cluster.Ingresses {
-			for _, host := range ingress.Hosts {
-				hostToClusters[host] = append(hostToClusters[host], cluster.Name)
+	hostToClusters := h.computeHostToClusterMap()
+	hostToBackend, backendCombinationList := h.computeBackends(hostToClusters)
+	hostToCert, sniList, defaultCert := h.computeCertsForHosts(hostToBackend)
+
+	h.warnAboutMissingCerts(hostToBackend, hostToCert)
+
+	h.templateInfo = TemplateInfo{
+		SniList:                sniList,
+		BackendCombinationList: backendCombinationList,
+		HostToBackend:          hostToBackend,
+		IPs:                    h.config.IPs,
+		DefaultWildcardCert:    defaultCert,
+	}
+}
+
+func (h *Handler) computeCertsForHosts(hostToBackend map[string]string) (map[string]string, map[string]SniDetail, string) {
+	// TODO(uubk): Make configurable
+	localForwardPort := 12345
+	hostToCert := map[string]string{}
+	sniList := map[string]SniDetail{}
+	defaultCert := ""
+	for _, cert := range h.config.Certificates {
+		// For each host: Figure out whether we actually have a backend there
+		var hostsUsingCurrentCert []string
+		isWildcard := false
+		for _, host := range cert.Domains {
+			if strings.Contains(host, "*") {
+				isWildcard = true
+				domain := strings.Trim(host, "*")
+				for host := range hostToBackend {
+					if strings.HasSuffix(host, domain) {
+						hostsUsingCurrentCert = append(hostsUsingCurrentCert, host)
+						hostToCert[host] = cert.Name
+					}
+				}
+			} else {
+				if _, ok := hostToBackend[host]; ok {
+					hostsUsingCurrentCert = append(hostsUsingCurrentCert, host)
+					hostToCert[host] = cert.Name
+				}
 			}
 		}
+		currentCert := SniDetail{
+			Domains:          hostsUsingCurrentCert,
+			IsWildcard:       isWildcard,
+			Path:             cert.Cert,
+			LocalForwardPort: localForwardPort,
+		}
+		sniList[cert.Name] = currentCert
+		localForwardPort++
+		if isWildcard {
+			defaultCert = cert.Name
+		}
 	}
+	return hostToCert, sniList, defaultCert
+}
 
-	// Step 2: Make a map of backend combinations to ips and of hosts to backend combinations
-	hostToBackend := map[string]string{}
+func (h *Handler) computeBackends(hostToClusters map[string][]string) (map[string]string, map[string][]Backend) {
+	hostToBackendCombination := map[string]string{}
 	backendCombinationList := map[string][]Backend{}
-	hosts := map[string]bool{}
 	for host, clusters := range hostToClusters {
-		hosts[host] = true
 		sort.Strings(clusters)
-		key := strings.Join(clusters, "-")
-		if _, ok := backendCombinationList[key]; !ok {
+		backendCombination := strings.Join(clusters, "-")
+		if _, ok := backendCombinationList[backendCombination]; !ok {
 			// We haven't seen this particular backend combination yet
 			var backends []Backend
 			for _, cluster := range clusters {
@@ -127,68 +172,27 @@ func (h *Handler) rebuildConfig() {
 					})
 				}
 			}
-			backendCombinationList[key] = backends
+			backendCombinationList[backendCombination] = backends
 		}
-		hostToBackend[host] = key
+		hostToBackendCombination[host] = backendCombination
 	}
-
-	cfg := TemplateInfo{
-		SniList:                make(map[string]SniDetail),
-		BackendCombinationList: backendCombinationList,
-		HostToBackend:          hostToBackend,
-		IPs:                    h.config.IPs,
-	}
-
-	// Step 3: Which SNIs do we have in our certs (first frontend and it's backends)
-	localForwardPort := 12345 // TODO(uubk): Make configurable
-	hostToCert := map[string]string{}
-	for _, cert := range h.config.Certificates {
-		// For each host: Figure out whether we actually have a backend there
-		var actuallyUsedHosts []string
-		isWildcard := false
-		for _, host := range cert.Domains {
-			if strings.Contains(host, "*") {
-				isWildcard = true
-				suffix := strings.Trim(host, "*")
-				for actualHost := range hostToBackend {
-					if strings.HasSuffix(actualHost, suffix) {
-						actuallyUsedHosts = append(actuallyUsedHosts, actualHost)
-						hostToCert[actualHost] = cert.Name
-					}
-				}
-			} else {
-				if _, ok := hostToBackend[host]; ok {
-					actuallyUsedHosts = append(actuallyUsedHosts, host)
-					hostToCert[host] = cert.Name
-				}
-			}
-		}
-		currentCert := SniDetail{
-			Domains:          actuallyUsedHosts,
-			IsWildcard:       isWildcard,
-			Path:             cert.Cert,
-			LocalForwardPort: localForwardPort,
-		}
-		cfg.SniList[cert.Name] = currentCert
-		localForwardPort++
-		if isWildcard {
-			cfg.DefaultWildcardCert = cert.Name
-		}
-	}
-
-	// Check whether we have hosts without certs
-	for host := range hostToBackend {
-		if _, ok := hostToCert[host]; !ok {
-			log.WithField("host", host).Warning("Host skipped because it is not covered by any certificate!")
-		}
-	}
-
-	h.templateInfo = cfg
+	return hostToBackendCombination, backendCombinationList
 }
 
-// Write a new config to disk
-func (h *Handler) updateConfig() {
-	log.Debug("Writing myConfigFile")
+func (h *Handler) computeHostToClusterMap() map[string][]string {
+	hostToClusters := map[string][]string{}
+	for _, cluster := range h.clusterState {
+		for _, ingress := range cluster.Ingresses {
+			for _, host := range ingress.Hosts {
+				hostToClusters[host] = append(hostToClusters[host], cluster.Name)
+			}
+		}
+	}
+	return hostToClusters
+}
+
+func (h *Handler) writeConfigToHAProxy() {
+	log.Debug("Writing config")
 
 	// TODO: Respect file mode setting
 	myConfigFile, err := os.OpenFile(h.config.HAProxyDropinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
@@ -199,7 +203,7 @@ func (h *Handler) updateConfig() {
 
 	err = h.template.Execute(myConfigFile, h.templateInfo)
 	if err != nil {
-		log.WithError(err).Fatal("Couldn't template haproxy myConfigFile")
+		log.WithError(err).Fatal("Couldn't template haproxy config")
 	}
 
 	// TODO: Replace with systemd API
@@ -208,6 +212,14 @@ func (h *Handler) updateConfig() {
 		err = exec.Command("sudo", "/bin/systemctl", "reload", "haproxy.service").Run()
 		if err != nil {
 			log.WithError(err).Fatal("Couldn't reload haproxy")
+		}
+	}
+}
+
+func (h *Handler) warnAboutMissingCerts(hostToBackend map[string]string, hostToCert map[string]string) {
+	for host := range hostToBackend {
+		if _, ok := hostToCert[host]; !ok {
+			log.WithField("host", host).Warning("Host skipped because it is not covered by any certificate!")
 		}
 	}
 }

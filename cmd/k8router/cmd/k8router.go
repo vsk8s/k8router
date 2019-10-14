@@ -48,7 +48,7 @@ func (k8r *K8router) Run() {
 	}
 	log.Debug("All cluster handlers loaded")
 
-	handler, err := haproxy.Init(eventChan, *cfg)
+	handler, err := haproxy.Initialize(eventChan, *cfg)
 	if err != nil {
 		log.WithField("config", k8r.configPath).WithError(err).Fatal("Couldn't init haproxy handler!")
 	}
