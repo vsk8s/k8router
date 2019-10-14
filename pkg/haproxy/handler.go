@@ -38,7 +38,10 @@ func Init(updates chan state.ClusterState, config config.Config) (*Handler, erro
 	if err != nil {
 		return nil, err
 	}
-	parsedTemplate.Funcs(template.FuncMap{"StringJoin": strings.Join})
+	parsedTemplate.Funcs(template.FuncMap{
+		"StringJoin": strings.Join,
+		"Replace": func (s, old, new string) string { return strings.Replace(s, old, new, -1) },
+	})
 	return &Handler{
 		updates:      updates,
 		numChanges:   0,
