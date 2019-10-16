@@ -74,7 +74,7 @@ func (h *LoadBalancer) createRule(service state.LoadBalancer) {
 			serviceIP,
 			"-r",
 			fmt.Sprintf("%s:%d", service.IP, service.Port),
-			"-g",
+			"-m",
 		).Run()
 		if err != nil {
 			log.WithField("service", service.Name).WithError(err).Error("Couldn't add rule")
