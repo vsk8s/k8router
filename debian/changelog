@@ -1,3 +1,9 @@
+k8router (0.1.7) unstable; urgency=medium
+
+  * Add the "Replace" function to the haproxy template
+
+ -- Ben Fiedler <bfiedler@vis.ethz.ch>  Sat, 18 Oct 2019 14:57:06 +0200
+
 k8router (0.1.6) unstable; urgency=medium
 
   * Move cluster event handling to informers

@@ -4,6 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/state"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"sort"
@@ -35,13 +36,19 @@ type Handler struct {
 	debugFileEventChannel chan bool
 }
 
-// Initialize a new handler
+// Initialize a new Handler
 func Initialize(updates chan state.ClusterState, config config.Config) (*Handler, error) {
-	parsedTemplate, err := template.ParseFiles(config.HAProxyTemplatePath)
+	rawTemplateString, err := ioutil.ReadFile(config.HAProxyTemplatePath)
 	if err != nil {
 		return nil, err
 	}
-	parsedTemplate.Funcs(template.FuncMap{"StringJoin": strings.Join})
+	parsedTemplate, err := template.New("template").Funcs(template.FuncMap{
+		"StringJoin": strings.Join,
+		"replace":    func(s, old, new string) string { return strings.Replace(s, old, new, -1) },
+	}).Parse(string(rawTemplateString))
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		updates:            updates,
 		haproxyNeedsUpdate: false,
