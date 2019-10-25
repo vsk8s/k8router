@@ -43,12 +43,12 @@ func (k8r *K8router) Run() {
 	eventChan := make(chan state.ClusterState)
 	for _, clusterCfg := range cfg.Clusters {
 		log.WithField("cluster", clusterCfg.Name).Debug("Starting cluster handler")
-		cluster := router.ClusterFromConfig(clusterCfg, eventChan)
+		cluster := router.Initialize(clusterCfg, eventChan)
 		cluster.Start()
 	}
 	log.Debug("All cluster handlers loaded")
 
-	handler, err := haproxy.Init(eventChan, *cfg)
+	handler, err := haproxy.Initialize(eventChan, *cfg)
 	if err != nil {
 		log.WithField("config", k8r.configPath).WithError(err).Fatal("Couldn't init haproxy handler!")
 	}
