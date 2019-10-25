@@ -1,3 +1,9 @@
+k8router (0.1.8) unstable; urgency=medium
+
+  * Add support for LoadBalancer services
+
+ -- Jan Veen <veenj@vis.ethz.ch> Fri, 25 Oct 2019 17:14:55 +0200
+
 k8router (0.1.7) unstable; urgency=medium
 
   * Add the "Replace" function to the haproxy template
