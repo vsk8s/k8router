@@ -37,6 +37,8 @@ type Cluster struct {
 	// Channel used for cluster state updates, shared externally
 	clusterStateChannel chan state.ClusterState
 
+	loadBalancerChannel chan state.LoadBalancerChange
+
 	readinessChannel chan bool
 
 	knownIngresses map[string]state.K8RouterIngress
@@ -54,12 +56,13 @@ type Cluster struct {
 }
 
 // Initialize a new cluster
-func Initialize(config config.Cluster, clusterStateChannel chan state.ClusterState) *Cluster {
+func Initialize(config config.Cluster, clusterStateChannel chan state.ClusterState, loadBalancerChannel chan state.LoadBalancerChange) *Cluster {
 	obj := Cluster{
 		config:                   config,
 		ingressEvents:            make(chan state.IngressChange, 2),
 		backendEvents:            make(chan state.BackendChange, 2),
 		clusterStateChannel:      clusterStateChannel,
+		loadBalancerChannel:      loadBalancerChannel,
 		readinessChannel:         make(chan bool, 2),
 		clearChannel:             make(chan bool, 2),
 		aggregatorStopChannel:    make(chan bool, 2),
@@ -227,6 +230,14 @@ func (c *Cluster) watch() error {
 	})
 	go ingressInformer.Run(stopper)
 
+	LoadBalancerInformer := factory.Core().V1().Services().Informer()
+	LoadBalancerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.handleLoadBalancerEvent(obj, watch.Added) },
+		DeleteFunc: func(obj interface{}) { c.handleLoadBalancerEvent(obj, watch.Deleted) },
+		UpdateFunc: func(old interface{}, new interface{}) { c.handleLoadBalancerEvent(new, watch.Modified) },
+	})
+	go LoadBalancerInformer.Run(stopper)
+
 	if c.isFirstConnectionAttempt {
 		c.readinessChannel <- true
 		c.isFirstConnectionAttempt = false
@@ -309,7 +320,7 @@ func (c *Cluster) handleIngressEvent(event interface{}, action watch.EventType) 
 		} else {
 			log.WithFields(log.Fields{
 				"cluster": c.config.Name,
-				"event": event,
+				"event":   event,
 			}).Error("Some other error")
 		}
 		return
@@ -349,6 +360,64 @@ func (c *Cluster) handleIngressEvent(event interface{}, action watch.EventType) 
 			c.ingressEvents <- myEvent
 		}
 		c.knownIngresses[obj.Name] = obj
+	}
+}
+
+func (c *Cluster) handleLoadBalancerEvent(event interface{}, action watch.EventType) {
+	eventObj, ok := event.(*v1coreapi.Service)
+	if !ok {
+		if action != watch.Error {
+			log.WithFields(log.Fields{
+				"cluster": c.config.Name,
+			}).Error("Got event in service handler which contains no service")
+		} else {
+			log.WithFields(log.Fields{
+				"cluster": c.config.Name,
+				"event":   event,
+			}).Error("Some other error")
+		}
+		return
+	}
+	if eventObj.Spec.Type != "LoadBalancer" {
+		return
+	}
+
+	for _, port := range eventObj.Spec.Ports {
+		ip := net.ParseIP(eventObj.Spec.ClusterIP)
+		if ip == nil {
+			log.WithField("service", eventObj.Name).WithField("IP", eventObj.Spec.ClusterIP).Warn("Could not parse IP")
+			continue
+		}
+		message := state.LoadBalancer{
+			Name:     eventObj.Name,
+			IP:       &ip,
+			Port:     port.Port,
+			Protocol: port.Protocol,
+		}
+
+		switch action {
+		case watch.Added:
+			c.loadBalancerChannel <- state.LoadBalancerChange{
+				Service: message,
+				Created: true,
+			}
+		case watch.Modified:
+			c.loadBalancerChannel <- state.LoadBalancerChange{
+				Service: message,
+				Created: false,
+			}
+			c.loadBalancerChannel <- state.LoadBalancerChange{
+				Service: message,
+				Created: true,
+			}
+		case watch.Deleted:
+			c.loadBalancerChannel <- state.LoadBalancerChange{
+				Service: message,
+				Created: false,
+			}
+		default:
+			log.WithField("err", event).Error("Got error event")
+		}
 	}
 }
 

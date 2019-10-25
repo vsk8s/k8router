@@ -5,6 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/haproxy"
+	"github.com/vsk8s/k8router/pkg/loadbalancer"
 	"github.com/vsk8s/k8router/pkg/router"
 	"github.com/vsk8s/k8router/pkg/state"
 	"os"
@@ -41,9 +42,10 @@ func (k8r *K8router) Run() {
 	log.Debug("Config loaded")
 
 	eventChan := make(chan state.ClusterState)
+	loadBalancerChan := make(chan state.LoadBalancerChange)
 	for _, clusterCfg := range cfg.Clusters {
 		log.WithField("cluster", clusterCfg.Name).Debug("Starting cluster handler")
-		cluster := router.Initialize(clusterCfg, eventChan)
+		cluster := router.Initialize(clusterCfg, eventChan, loadBalancerChan)
 		cluster.Start()
 	}
 	log.Debug("All cluster handlers loaded")
@@ -54,6 +56,10 @@ func (k8r *K8router) Run() {
 	}
 	handler.Start()
 	log.Debug("HAProxy handler loaded")
+
+	balancer := loadbalancer.Initialize(cfg.IPs, loadBalancerChan)
+	balancer.Start()
+	log.Debug("balancer started")
 
 	// Block until exit
 	exitSigChan := make(chan os.Signal, 1)

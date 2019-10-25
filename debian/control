@@ -14,5 +14,6 @@ Package: k8router
 Architecture: any
 Built-Using: ${misc:Built-Using}
 Depends: ${shlibs:Depends},
-         ${misc:Depends}
+         ${misc:Depends},
+         ipvsadm
 Description: Cluster router for kubernetes

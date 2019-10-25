@@ -31,6 +31,8 @@ forward traffic any cluster.
     * The user must be able to watch Ingresses in all namespaces in all clusters.
       See `k8s-rbac.yml` for more information.
 * Certificates for all your domains.
+* `sysctl net.ipv4.vs.conntrack = 1`
+* Source-NAT rule for the service IP subnet
 
 Each Kubernetes cluster has to expose its API to all the routers. Every kubelet
 node has to be accessible by all routers.

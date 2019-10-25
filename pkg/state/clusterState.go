@@ -1,6 +1,9 @@
 package state
 
-import "net"
+import (
+	v1 "k8s.io/api/core/v1"
+	"net"
+)
 
 // K8RouterIngress contains all ingress-related information
 type K8RouterIngress struct {
@@ -12,6 +15,14 @@ type K8RouterIngress struct {
 type K8RouterBackend struct {
 	Name string
 	IP   *net.IP
+}
+
+// LoadBalancer exposes a service externally
+type LoadBalancer struct {
+	Name     string
+	IP       *net.IP
+	Port     int32
+	Protocol v1.Protocol
 }
 
 // ClusterState contains the full state of a given ClusterInternal. This should be enough to build the haproxy config
@@ -30,5 +41,11 @@ type IngressChange struct {
 // BackendChange contains a backend change event
 type BackendChange struct {
 	Backend K8RouterBackend
+	Created bool
+}
+
+// LoadBalancerChange is a change in a loadbalancer event
+type LoadBalancerChange struct {
+	Service LoadBalancer
 	Created bool
 }
