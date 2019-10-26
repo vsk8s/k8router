@@ -1,3 +1,9 @@
+k8router (0.1.9) unstable; urgency=medium
+
+  * Deliver kernel configuration for load balancer
+
+ -- Jan Veen <veenj@vis.ethz.ch> Sat, 26 Oct 2019 12:11:02 +0200
+
 k8router (0.1.8) unstable; urgency=medium
 
   * Add support for LoadBalancer services
