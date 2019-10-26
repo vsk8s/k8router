@@ -103,8 +103,6 @@ func (h *LoadBalancer) deleteRule(service state.LoadBalancer) {
 			"-D",
 			protocol,
 			serviceIP,
-			"-s",
-			"rr",
 		).Run()
 
 		if err != nil {
