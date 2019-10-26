@@ -57,6 +57,12 @@ func (h *LoadBalancer) createRule(service state.LoadBalancer) {
 
 		serviceIP := formatServiceIP(ip, service.Port)
 		protocol := protocolToFlag(service.Protocol)
+		log.Debugf("Running command 'ipvsadm %s %s %s %s %s'",
+			"-A",
+			protocol,
+			serviceIP,
+			"-s",
+			"rr")
 		err := exec.Command("ipvsadm",
 			"-A",
 			protocol,
@@ -68,6 +74,13 @@ func (h *LoadBalancer) createRule(service state.LoadBalancer) {
 		if err != nil {
 			log.WithError(err).Error("Couldn't add service")
 		}
+		log.Debugf("Running command 'ipvsadm %s %s %s %s %s %s'",
+			"-a",
+			protocol,
+			serviceIP,
+			"-r",
+			fmt.Sprintf("%s:%d", service.IP, service.Port),
+			"-m")
 		err = exec.Command("ipvsadm",
 			"-a",
 			protocol,
@@ -99,6 +112,10 @@ func (h *LoadBalancer) deleteRule(service state.LoadBalancer) {
 		serviceIP := formatServiceIP(ip, service.Port)
 		protocol := protocolToFlag(service.Protocol)
 
+		log.Debugf("Running command 'ipvsadm %s %s %s'",
+			"-D",
+			protocol,
+			serviceIP)
 		err := exec.Command("ipvsadm",
 			"-D",
 			protocol,
