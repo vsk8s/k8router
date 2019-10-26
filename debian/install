@@ -1,1 +1,2 @@
 debian/k8router.service /lib/systemd/system
+debian/sysctl.conf /etc/sysctl.d/90-k8router.conf
