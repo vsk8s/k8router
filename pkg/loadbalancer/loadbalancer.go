@@ -66,7 +66,7 @@ func (h *LoadBalancer) createRule(service state.LoadBalancer) {
 		).Run()
 
 		if err != nil {
-			log.WithError(err).Fatal("Couldn't add service")
+			log.WithError(err).Error("Couldn't add service")
 		}
 		err = exec.Command("ipvsadm",
 			"-a",

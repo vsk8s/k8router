@@ -1,3 +1,9 @@
+k8router (0.1.10-1) unstable; urgency=medium
+
+  * Keep program running on error in load balancer handler
+
+ -- Jan Veen <veenj@vis.ethz.ch> Sat, 26 Oct 2019 13:44:02 +0200
+
 k8router (0.1.9-1) unstable; urgency=medium
 
   * Fix install directory of sysctl file
