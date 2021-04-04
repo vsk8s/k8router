@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"flag"
+	"os"
+	"os/signal"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/vsk8s/k8router/pkg/config"
 	"github.com/vsk8s/k8router/pkg/haproxy"
 	"github.com/vsk8s/k8router/pkg/loadbalancer"
 	"github.com/vsk8s/k8router/pkg/router"
 	"github.com/vsk8s/k8router/pkg/state"
-	"os"
-	"os/signal"
 )
 
 // K8router main object, just contains command line arguments
@@ -57,7 +58,10 @@ func (k8r *K8router) Run() {
 	handler.Start()
 	log.Debug("HAProxy handler loaded")
 
-	balancer := loadbalancer.Initialize(cfg.IPs, loadBalancerChan)
+	balancer, err := loadbalancer.Initialize(cfg.IPs, loadBalancerChan)
+	if err != nil {
+		log.WithError(err).Fatal("could not initialize IPVS load balancer")
+	}
 	balancer.Start()
 	log.Debug("balancer started")
 
